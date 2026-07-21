@@ -1,0 +1,70 @@
+name: MAF26 Interval Tracker (cloud backup)
+
+# Public-repo backup for shared/maf-interval-tracker. The LAPTOP (Windows Task Scheduler)
+# is primary; this fills any slot the laptop misses (laptop off in the evenings).
+# Public repo = unlimited free Actions minutes — REQUIRED because each run IDLES ~2.5h
+# waiting for the exact slot minute, which on a private repo would burn ~150 billed min/run
+# and blow the 2,000-min account cap.
+#
+# GitHub cron fires 30-90+ min late, so each cron starts ~2.5h EARLY and the script
+# (--target=HHMM) sleeps until 1 min past the slot, then fills "as of now" (honest if late).
+# --skip-if-filled makes it exit silently when the laptop already wrote that slot.
+# The script's own run-dates.json gate makes non-round days a fast no-op.
+
+on:
+  schedule:
+    - cron: '30 9 * * *'    # 17:30 UTC start -> target 2000 SGT (12:00 UTC)
+    - cron: '0 11 * * *'    # 19:00 UTC start -> target 2130 SGT (13:30 UTC)
+    - cron: '30 12 * * *'   # 20:30 UTC start -> target 2300 SGT (15:00 UTC)
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Slot HHMM to target (e.g. 2000). Blank = nearest slot now.'
+        required: false
+        default: ''
+      apply:
+        description: 'Write to the sheet (false = dry-run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: interval-tracker-${{ github.event.schedule || github.event.inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      BRAND: MLB
+      TZ: Asia/Singapore
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
+      WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Map schedule -> target slot
+        id: map
+        run: |
+          case "${{ github.event.schedule }}" in
+            "30 9 * * *")  echo "target=2000" >> "$GITHUB_OUTPUT" ;;
+            "0 11 * * *")  echo "target=2130" >> "$GITHUB_OUTPUT" ;;
+            "30 12 * * *") echo "target=2300" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "target=${{ github.event.inputs.target }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Run tracker
+        run: |
+          ARGS="--skip-if-filled"
+          TARGET="${{ steps.map.outputs.target }}"
+          if [ -n "$TARGET" ]; then ARGS="$ARGS --target=$TARGET"; fi
+          # scheduled runs always write; manual dispatch writes only if apply=true
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.apply }}" = "true" ]; then
+            ARGS="$ARGS --apply"
+          fi
+          echo "node tracker.js $ARGS"
+          node tracker.js $ARGS
