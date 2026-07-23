@@ -69,7 +69,9 @@ const ACT = (process.env.META_AD_ACCOUNT_ID || CFG.act).replace('act_', '');
 const WC_URL = (process.env.WOOCOMMERCE_STORE_URL || CFG.store).replace(/\/$/, '');
 const WC_KEY = process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WC_CONSUMER_KEY || '';
 const WC_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WC_CONSUMER_SECRET || '';
-const WC_AUTH = 'Basic ' + Buffer.from(WC_KEY + ':' + WC_SECRET).toString('base64');
+// Query-param auth, NOT an Authorization: Basic header — mdmlingbakery.com began
+// rejecting header auth with 401 cannot_view on 22 Jul 2026 (host/security change).
+const WC_AUTH_Q = `consumer_key=${encodeURIComponent(WC_KEY)}&consumer_secret=${encodeURIComponent(WC_SECRET)}`;
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 let TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
 
@@ -159,8 +161,8 @@ async function metaBudgets() {
 // dashboard $708 — two same-day refunds of −$252 on pre-today orders).
 async function wcToday() {
   const iso = todaySGT();
-  const statsUrl = `${WC_URL}/wp-json/wc-analytics/reports/revenue/stats?after=${iso}T00:00:00&before=${iso}T23:59:59&interval=day`;
-  const s = await jget(statsUrl, { headers: { Authorization: WC_AUTH } });
+  const statsUrl = `${WC_URL}/wp-json/wc-analytics/reports/revenue/stats?after=${iso}T00:00:00&before=${iso}T23:59:59&interval=day&${WC_AUTH_Q}`;
+  const s = await jget(statsUrl);
   if (s.status === 200 && s.json && s.json.totals) {
     return { sales: Number(s.json.totals.total_sales) || 0, orders: Number(s.json.totals.orders_count) || 0 };
   }
@@ -168,8 +170,8 @@ async function wcToday() {
   const { after, before } = gmtBoundsToday();
   let page = 1, count = 0, total = 0;
   while (true) {
-    const url = `${WC_URL}/wp-json/wc/v3/orders?status=${PAID_STATUSES}&after=${after}&before=${before}&dates_are_gmt=true&per_page=100&page=${page}&_fields=id,total`;
-    const { status, json, text } = await jget(url, { headers: { Authorization: WC_AUTH } });
+    const url = `${WC_URL}/wp-json/wc/v3/orders?status=${PAID_STATUSES}&after=${after}&before=${before}&dates_are_gmt=true&per_page=100&page=${page}&_fields=id,total&${WC_AUTH_Q}`;
+    const { status, json, text } = await jget(url);
     if (status !== 200) throw new Error('WC error ' + status + ': ' + text.slice(0, 200));
     if (!json.length) break;
     for (const o of json) { count++; total += parseFloat(o.total || 0); }
@@ -180,10 +182,13 @@ async function wcToday() {
 }
 
 // ---- Google Sheets ----
-let _tok = null;
+// Token is re-minted if >50 min old: access tokens die at 60 min, and a --target run
+// sleeps up to ~75 min AFTER the startup sheet read minted one (killed the 2130 cloud
+// slot on 21+22 Jul 2026 — "Sheets read error 401" right after the nap).
+let _tok = null, _tokAt = 0;
 async function googleToken() {
-  if (_tok) return _tok;
-  if (process.env.GOOGLE_ACCESS_TOKEN) return (_tok = process.env.GOOGLE_ACCESS_TOKEN);
+  if (_tok && Date.now() - _tokAt < 50 * 60 * 1000) return _tok;
+  if (process.env.GOOGLE_ACCESS_TOKEN) { _tokAt = Date.now(); return (_tok = process.env.GOOGLE_ACCESS_TOKEN); }
   let creds;
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_REFRESH_TOKEN) {
     creds = { client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, refresh_token: process.env.GOOGLE_REFRESH_TOKEN };
@@ -193,6 +198,7 @@ async function googleToken() {
   const body = new URLSearchParams({ client_id: creds.client_id, client_secret: creds.client_secret, refresh_token: creds.refresh_token, grant_type: 'refresh_token' });
   const { json } = await jget('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   if (!json || !json.access_token) throw new Error('Google token refresh failed');
+  _tokAt = Date.now();
   return (_tok = json.access_token);
 }
 async function sheetGet(range, render = 'FORMATTED_VALUE') {
