@@ -1,7 +1,8 @@
 /**
- * MAF26 Round-Close Interval Tracker  (SHARED engine, MLB now / LLV later)
+ * MAF26 Round-Close Interval Tracker  (SHARED engine, MLB + LLV)
  * ------------------------------------------------------------------------
- * On the last 2 days of a promo round, fills the brand's "moving average" tab
+ * On the last 3 days of a promo round (Colin's rule since 24 Jul 2026: 2 days
+ * before, 1 day before, last day), fills the brand's "moving average" tab
  * at the interval times listed in column A (1030/1145/1400/1600/1745/2000/2130/2300):
  *   col I = TOTAL Meta MAF26 spend so far today (campaigns with "MAF26" in the name)
  *   col J = TOTAL WooCommerce sales so far today (paid orders: completed+processing, gross)
@@ -43,7 +44,7 @@ const { execSync } = require('child_process');
 // ---- per-brand config (public identifiers only) ----
 const BRANDS = {
   MLB: { sheetId: '1bGCYAnn2Cqtl10xIe6YKsseFYuhEbeIp8Cq3PHzBjG8', tab: 'moving average', gid: 1787608602, act: '521387868326577', store: 'https://mdmlingbakery.com' },
-  // LLV: add when its "moving average" tab exists in 1Q5meBGm7jbw4abgzixEJBy9VvdBY7CnfOzYWqyTqquo
+  LLV: { sheetId: '1Q5meBGm7jbw4abgzixEJBy9VvdBY7CnfOzYWqyTqquo', tab: 'daily moving average', gid: 163728980, act: '3055222664753411', store: 'https://www.lalevain.com' },
 };
 const BRAND = (process.env.BRAND || '').toUpperCase();
 const CFG = BRANDS[BRAND];
@@ -273,8 +274,11 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
 (async () => {
   // ---- run-date gate: the scheduled task fires daily; only round-close days proceed ----
   // (--spot and --add-slot are manual, human-initiated actions — never gated)
+  // run-dates.json is per-brand since 24 Jul 2026 ({"MLB":[...],"LLV":[...]}) — the brands'
+  // round closes don't align. A legacy flat array still works and applies to every brand.
   const runDatesPath = path.join(__dirname, 'run-dates.json');
-  const runDates = fs.existsSync(runDatesPath) ? JSON.parse(fs.readFileSync(runDatesPath, 'utf8')) : [];
+  const rdRaw = fs.existsSync(runDatesPath) ? JSON.parse(fs.readFileSync(runDatesPath, 'utf8')) : [];
+  const runDates = Array.isArray(rdRaw) ? rdRaw : (rdRaw[BRAND] || []);
   const today = todaySGT();
   if (!FORCE && !SPOT && !runDates.includes(today)) {
     console.log(`[${BRAND}] ${today} is not in run-dates.json — nothing to do (use --force to override).`);

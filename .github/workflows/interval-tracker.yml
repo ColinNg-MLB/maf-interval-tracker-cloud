@@ -9,7 +9,11 @@ name: MAF26 Interval Tracker (cloud backup)
 # GitHub cron fires 30-90+ min late, so each cron starts ~2.5h EARLY and the script
 # (--target=HHMM) sleeps until 1 min past the slot, then fills "as of now" (honest if late).
 # --skip-if-filled makes it exit silently when the laptop already wrote that slot.
-# The script's own run-dates.json gate makes non-round days a fast no-op.
+# The script's own run-dates.json gate (per-brand since 24 Jul 2026) makes non-round
+# days a fast no-op.
+#
+# BOTH brands run as a matrix since 24 Jul 2026 — each brand only proceeds on ITS OWN
+# armed dates, so a round-close day for one brand is a no-op for the other.
 
 on:
   schedule:
@@ -26,21 +30,36 @@ on:
         description: 'Write to the sheet (false = dry-run)'
         type: boolean
         default: false
-
-concurrency:
-  group: interval-tracker-${{ github.event.schedule || github.event.inputs.target }}
-  cancel-in-progress: false
+      force:
+        description: 'Ignore the run-dates gate (testing only)'
+        type: boolean
+        default: false
 
 jobs:
   fill:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - brand: MLB
+            meta_secret: META_ACCESS_TOKEN
+            wc_key_secret: WC_CONSUMER_KEY
+            wc_secret_secret: WC_CONSUMER_SECRET
+          - brand: LLV
+            meta_secret: LLV_META_ACCESS_TOKEN
+            wc_key_secret: LLV_WOOCOMMERCE_CONSUMER_KEY
+            wc_secret_secret: LLV_WOOCOMMERCE_CONSUMER_SECRET
+    concurrency:
+      group: interval-tracker-${{ matrix.brand }}-${{ github.event.schedule || github.event.inputs.target || github.run_id }}
+      cancel-in-progress: false
     env:
-      BRAND: MLB
+      BRAND: ${{ matrix.brand }}
       TZ: Asia/Singapore
-      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
-      WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
-      WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+      META_ACCESS_TOKEN: ${{ secrets[matrix.meta_secret] }}
+      WC_CONSUMER_KEY: ${{ secrets[matrix.wc_key_secret] }}
+      WC_CONSUMER_SECRET: ${{ secrets[matrix.wc_secret_secret] }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
@@ -66,5 +85,6 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.apply }}" = "true" ]; then
             ARGS="$ARGS --apply"
           fi
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
           echo "node tracker.js $ARGS"
           node tracker.js $ARGS
