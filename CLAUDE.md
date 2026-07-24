@@ -22,6 +22,12 @@ an accepted trade-off for a seasonal tool (Colin, 21 Jul 2026).
 ## How it runs
 - 3 crons, each ~2.5h before its slot; a step maps the cron string → `--target=HHMM`:
   `30 9 * * *`→2000, `0 11 * * *`→2130, `30 12 * * *`→2300 (SGT).
+- **2-brand matrix since 24 Jul 2026 (MLB + LLV):** every cron/dispatch runs BOTH brands as
+  parallel jobs; each brand proceeds only if today is in ITS list in `run-dates.json`
+  (per-brand format `{"MLB":[...],"LLV":[...]}`), so a round-close day for one brand is a
+  fast no-op for the other. Per-brand secrets are mapped via `secrets[matrix.*]`.
+- Dispatch inputs: `target` (slot HHMM), `apply` (default false = dry), `force`
+  (default false; ignores the run-dates gate — testing only).
 - `tracker.js --target=HHMM --skip-if-filled --apply`: sleeps until slot+1min (cap 3.5h via
   `WAIT_CAP_MIN`), then — if the laptop hasn't already filled col I for that row — pulls
   Meta spend + WC-analytics sales + live budgets, writes the row, sends Telegram. If the
@@ -31,10 +37,13 @@ an accepted trade-off for a seasonal tool (Colin, 21 Jul 2026).
   ~1-2 min after the slot; console shows the sleep countdown.
 
 ## Secrets (set via `gh secret set`)
-`META_ACCESS_TOKEN`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (digitalmarketing@ trio), and — once the bot
-exists — `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Until the Telegram secrets are added the
-cloud fills the sheet but sends no alert (graceful skip).
+MLB: `META_ACCESS_TOKEN`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`.
+LLV (added 24 Jul 2026 from `llv/.env`): `LLV_META_ACCESS_TOKEN`,
+`LLV_WOOCOMMERCE_CONSUMER_KEY`, `LLV_WOOCOMMERCE_CONSUMER_SECRET`.
+Shared: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
+(digitalmarketing@ trio), and — once the bot exists — `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID`. Until the Telegram secrets are added the cloud fills the sheet but
+sends no alert (graceful skip).
 
 ## Teardown (end of MAF26 season)
 Disable/delete this workflow with the other MAF jobs. Or just clear `run-dates.json` — the
