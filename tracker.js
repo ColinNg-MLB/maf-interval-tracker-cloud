@@ -266,6 +266,14 @@ const money = (v) => {
 };
 
 // per-row interval formulas, matching Colin's sheet pattern (r = this row, p = row above)
+// F = ad cost as % of sales for the interval. An interval with SPEND but ZERO sales has no
+// finite ratio — the old `=SUM(B/C)` returned #DIV/0!, and every downstream filter
+// (B21/B22, G, H) skips non-numbers, so a dead interval became INVISIBLE and B24 kept
+// recommending off the last interval that happened to have sales (27 Jul 2026: +30% at
+// 16:00 off the 11:45 reading, after 4.5h and $110 of spend with $0 back — Colin caught it).
+// Now: spend + no sales → 9.99 (renders 999%, an obvious flag) so the rule actually sees it.
+// No spend and no sales → "" (a genuinely empty interval isn't a performance signal).
+const fFormula = (r) => `=IF(C${r}>0, B${r}/C${r}, IF(B${r}>0, 9.99, ""))`;
 const gFormula = (r, p) => `=IF(AND(ISNUMBER(F${r}), ISNUMBER(F${p}), F${p}<>0), (F${r}-F${p})/F${p}, "")`;
 // H mirrors the sheet's B24 rule: <10% → +30%, <15% → +25%, <20% → +20%; else by
 // performance change: ≤+15% hold, ≤+25% → -10%, ≤+40% → -15%, worse → -20%
@@ -412,7 +420,7 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
     const bRef = String(f[0] || '').replace(/\s/g, '');
     const m = bRef.match(/^=I(\d+)-I(\d+)$/);
     if (!bRef) {
-      writes.push({ range: `B${r}:H${r}`, values: [[`=I${r}-I${p}`, `=J${r}-J${p}`, `=K${r}-K${p}`, `=C${r}/D${r}`, `=SUM(B${r}/C${r})`, gFormula(r, p), hFormula(r)]] });
+      writes.push({ range: `B${r}:H${r}`, values: [[`=I${r}-I${p}`, `=J${r}-J${p}`, `=K${r}-K${p}`, `=C${r}/D${r}`, fFormula(r), gFormula(r, p), hFormula(r)]] });
       console.log(`  self-heal: row ${r} had no interval formulas — writing B:H (vs row ${p})`);
     } else if (m && Number(m[2]) !== p) {
       writes.push({ range: `B${r}:D${r}`, values: [[`=I${r}-I${p}`, `=J${r}-J${p}`, `=K${r}-K${p}`]] });
