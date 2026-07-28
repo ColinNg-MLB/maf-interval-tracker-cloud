@@ -493,7 +493,8 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
   lines.push(`<b>${BRAND} MAF26 — ${slotLabel(slot.raw)} check</b> (${today})`);
   lines.push('');
   lines.push('<b>Overall</b>');
-  lines.push(`total spend: ${asMoney(iSpend)} of ${money(budgets.total)} budgeted`);
+  // Colin's spec (28 Jul 2026): plain cell value, no "$", no "of $X budgeted" suffix
+  lines.push(`total spend: ${asText(iSpend)}`);
   lines.push(`total sales: ${asMoney(iSales)}`);
   lines.push(`%: ${asText(iPct)}`);
   lines.push(`orders: ${asText(iOrders)}`);
