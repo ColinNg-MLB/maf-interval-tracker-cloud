@@ -300,7 +300,8 @@ async function rangeShot(range) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const money = (v) => {
   const n = Number(v);
-  if (Number.isFinite(n)) return '$' + n.toFixed(2).replace(/\.00$/, '');
+  // thousands separator required — Colin, 28 Jul 2026 ("14,623.60 so its easier to read")
+  if (Number.isFinite(n)) return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, '');
   const s = String(v == null || v === '' ? '—' : v);
   return s.startsWith('#') ? '—' : s; // sheet error cells (#DIV/0! etc) read as "—"
 };
@@ -481,11 +482,11 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
   const grid = await sheetGet(`A1:M${anchor - 1}`);
   const decision = await sheetGet(`A${anchor}:B${anchor + 13}`);
   const rowVals = grid[slot.row - 1] || [];
-  const num = (v) => { const x = parseFloat(String(v).replace(/[$,%]/g, '').replace(/,/g, '')); return Number.isFinite(x) ? x : null; };
-  const asMoney = (v) => money(num(v) != null ? num(v) : v);
   const asText = (v) => esc(v == null || v === '' || String(v).startsWith('#') ? '—' : v);
   // Message layout = Colin's spec (28 Jul 2026): Overall block first (the slot row's
   // cumulative cells I:M), then the latest-interval block (B:F), both incl. the % column.
+  // Every line = the cell's FORMATTED value verbatim — the sheet's own number formats
+  // carry the thousands commas ("14,623.60") and rounding Colin wants; no "$", no re-math.
   const [iSpend, iSales, iOrders, iPct, iAvg] = [rowVals[8], rowVals[9], rowVals[10], rowVals[11], rowVals[12]];
   const [pSpent, pSales, pOrders, pAvg, pPct] = [rowVals[1], rowVals[2], rowVals[3], rowVals[4], rowVals[5]];
 
@@ -493,23 +494,22 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
   lines.push(`<b>${BRAND} MAF26 — ${slotLabel(slot.raw)} check</b> (${today})`);
   lines.push('');
   lines.push('<b>Overall</b>');
-  // Colin's spec (28 Jul 2026): plain cell value, no "$", no "of $X budgeted" suffix
   lines.push(`total spend: ${asText(iSpend)}`);
-  lines.push(`total sales: ${asMoney(iSales)}`);
+  lines.push(`total sales: ${asText(iSales)}`);
   lines.push(`%: ${asText(iPct)}`);
   lines.push(`orders: ${asText(iOrders)}`);
-  lines.push(`avg value: ${asMoney(iAvg)}`);
+  lines.push(`avg value: ${asText(iAvg)}`);
   lines.push('');
   // interval block: the sheet's own formula cells. First slot of the day has no
   // previous interval — Colin wants no carry-over from yesterday, so it's totals-only.
   if (prevSlot) {
     const missed = skippedSlots.length ? ` (${skippedSlots.map((x) => slotLabel(x.raw)).join(', ')} slot${skippedSlots.length > 1 ? 's' : ''} missed)` : '';
     lines.push(`<b>${esc(slotLabel(prevSlot.raw))} to ${esc(slotLabel(slot.raw))}</b>${esc(missed)}`);
-    lines.push(`total spend: ${asMoney(pSpent)}`);
-    lines.push(`total sales: ${asMoney(pSales)}`);
+    lines.push(`total spend: ${asText(pSpent)}`);
+    lines.push(`total sales: ${asText(pSales)}`);
     lines.push(`%: ${asText(pPct)}`);
     lines.push(`orders: ${asText(pOrders)}`);
-    lines.push(`avg value: ${asMoney(pAvg)}`);
+    lines.push(`avg value: ${asText(pAvg)}`);
     lines.push('');
   }
   lines.push('<b>Decision block</b>');
