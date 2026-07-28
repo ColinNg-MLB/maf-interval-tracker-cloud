@@ -67,6 +67,10 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install screenshot deps (render-shot.py)
+        run: |
+          python3 -m pip install --quiet pypdfium2 pillow
+          python3 -c "import pypdfium2, PIL; print('render deps OK')"
       - name: Map schedule -> target slot
         id: map
         run: |

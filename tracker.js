@@ -6,15 +6,19 @@
  * at the interval times listed in column A (1030/1145/1400/1600/1745/2000/2130/2300):
  *   col I = TOTAL Meta MAF26 spend so far today (campaigns with "MAF26" in the name)
  *   col J = TOTAL WooCommerce sales so far today — refund-netted `wc-analytics` total_sales,
- *           the SAME number Colin's WooCommerce Analytics dashboard shows. Never "simplify" it
- *           back to a gross order sum (a raw read said $960 vs his $708).
- *   col K = TOTAL paid-order count so far today
+ *           i.e. the SAME number Colin's WooCommerce Analytics dashboard shows (a raw order-sum
+ *           read $960 vs his $708 on day one; never "simplify" it back to a gross sum). Falls back
+ *           to a raw sum ONLY if the analytics endpoint is unavailable, and says so in the log.
+ *   col K = TOTAL paid-order count so far today (analytics orders_count)
  *   B17   = total daily budget of ALL active MAF26 campaigns (live from Meta)
  *   B18   = daily budget of the purchase-objective MAF26 campaign(s)
  * The sheet's own formulas (cols B-H, B19-B30) do all the decision math — this
  * script NEVER writes those cells. After writing, it reads the sheet back and
- * sends Colin a Telegram message: interval summary + today's totals + the
- * decision block (A17:B30, with B25 "new purchase amount" highlighted).
+ * sends Colin a Telegram message ("last day tracker" bot): Overall totals (the slot
+ * row's I:M cells) + the latest interval (B:F) + the decision block as text (B25
+ * "new purchase amount" highlighted), followed by TWO screenshots — the ladder
+ * table (A1:M<last time row>) and the decision block (label-anchored A..:B..+13) —
+ * via the Sheets range-PDF export rendered by render-shot.py (pypdfium2 + Pillow).
  *
  * Timing: run by Windows Task Scheduler at the exact interval times (GitHub cron
  * is 30-90 min late — useless here). The script matches "now" to the nearest
@@ -52,6 +56,7 @@ const BRAND = (process.env.BRAND || '').toUpperCase();
 const CFG = BRANDS[BRAND];
 if (!CFG) { console.error(`FATAL: set BRAND to one of: ${Object.keys(BRANDS).join(', ')} (got "${process.env.BRAND || ''}")`); process.exit(1); }
 if (process.env.TAB_OVERRIDE) CFG.tab = process.env.TAB_OVERRIDE; // testing only — point at a copy of the tab
+if (process.env.GID_OVERRIDE) CFG.gid = Number(process.env.GID_OVERRIDE); // pair with TAB_OVERRIDE — screenshots address the tab by gid
 
 const CAMPAIGN_MATCH = process.env.CAMPAIGN_MATCH || 'MAF26';
 const PAID_STATUSES = 'completed,processing';
@@ -258,6 +263,39 @@ async function telegramSend(html) {
   if (status !== 200 || !(json && json.ok)) throw new Error('Telegram send failed: ' + text.slice(0, 200));
   return true;
 }
+async function telegramSendPhoto(png, caption) {
+  if (!TG_TOKEN || !TG_CHAT) return false;
+  const fd = new FormData();
+  fd.append('chat_id', TG_CHAT);
+  if (caption) fd.append('caption', caption);
+  fd.append('photo', new Blob([png], { type: 'image/png' }), 'sheet.png');
+  const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendPhoto`, { method: 'POST', body: fd });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { j = null; }
+  if (r.status !== 200 || !(j && j.ok)) throw new Error('Telegram photo failed: ' + t.slice(0, 200));
+  return true;
+}
+// Screenshot of a cell range: Sheets range-scoped PDF export -> render-shot.py (pypdfium2)
+// -> cropped PNG buffer. Note: the export URL addresses the tab by GID, so TAB_OVERRIDE
+// testing must also set GID_OVERRIDE or the shots come from the LIVE tab.
+async function rangeShot(range) {
+  const token = await googleToken();
+  const url = `https://docs.google.com/spreadsheets/d/${CFG.sheetId}/export?format=pdf&gid=${CFG.gid}&range=${encodeURIComponent(range)}` +
+    `&portrait=true&fitw=true&gridlines=true&size=A4&top_margin=0.2&bottom_margin=0.2&left_margin=0.2&right_margin=0.2`;
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  if (r.status !== 200) throw new Error(`sheet PDF export failed ${r.status} (range ${range})`);
+  const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const pdfPath = path.join(os.tmpdir(), `maf-shot-${stamp}.pdf`);
+  const pngPath = path.join(os.tmpdir(), `maf-shot-${stamp}.png`);
+  fs.writeFileSync(pdfPath, Buffer.from(await r.arrayBuffer()));
+  try {
+    const py = process.platform === 'win32' ? 'py' : 'python3';
+    execSync(`${py} "${path.join(__dirname, 'render-shot.py')}" "${pdfPath}" "${pngPath}"`, { stdio: 'pipe' });
+    return fs.readFileSync(pngPath);
+  } finally {
+    for (const p of [pdfPath, pngPath]) { try { fs.unlinkSync(p); } catch {} }
+  }
+}
 
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const money = (v) => {
@@ -443,31 +481,36 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
   const grid = await sheetGet(`A1:M${anchor - 1}`);
   const decision = await sheetGet(`A${anchor}:B${anchor + 13}`);
   const rowVals = grid[slot.row - 1] || [];
-  const iOf = { spentPeriod: 1, salePeriod: 2, ordersPeriod: 3, avgVal: 4 }; // B,C,D,E
   const num = (v) => { const x = parseFloat(String(v).replace(/[$,%]/g, '').replace(/,/g, '')); return Number.isFinite(x) ? x : null; };
+  const asMoney = (v) => money(num(v) != null ? num(v) : v);
+  const asText = (v) => esc(v == null || v === '' || String(v).startsWith('#') ? '—' : v);
+  // Message layout = Colin's spec (28 Jul 2026): Overall block first (the slot row's
+  // cumulative cells I:M), then the latest-interval block (B:F), both incl. the % column.
+  const [iSpend, iSales, iOrders, iPct, iAvg] = [rowVals[8], rowVals[9], rowVals[10], rowVals[11], rowVals[12]];
+  const [pSpent, pSales, pOrders, pAvg, pPct] = [rowVals[1], rowVals[2], rowVals[3], rowVals[4], rowVals[5]];
 
   const lines = [];
   lines.push(`<b>${BRAND} MAF26 — ${slotLabel(slot.raw)} check</b> (${today})`);
   lines.push('');
-  // interval block: the sheet's own formula cells (B:E). First slot of the day has no
+  lines.push('<b>Overall</b>');
+  lines.push(`total spend: ${asMoney(iSpend)} of ${money(budgets.total)} budgeted`);
+  lines.push(`total sales: ${asMoney(iSales)}`);
+  lines.push(`%: ${asText(iPct)}`);
+  lines.push(`orders: ${asText(iOrders)}`);
+  lines.push(`avg value: ${asMoney(iAvg)}`);
+  lines.push('');
+  // interval block: the sheet's own formula cells. First slot of the day has no
   // previous interval — Colin wants no carry-over from yesterday, so it's totals-only.
   if (prevSlot) {
-    const pSpent = rowVals[iOf.spentPeriod], pSales = rowVals[iOf.salePeriod];
-    const pOrders = rowVals[iOf.ordersPeriod], pAvg = rowVals[iOf.avgVal];
     const missed = skippedSlots.length ? ` (${skippedSlots.map((x) => slotLabel(x.raw)).join(', ')} slot${skippedSlots.length > 1 ? 's' : ''} missed)` : '';
-    lines.push(`<b>${esc(slotLabel(prevSlot.raw))} → ${esc(slotLabel(slot.raw))}</b>${esc(missed)}`);
-    lines.push(`spent: ${money(num(pSpent) != null ? num(pSpent) : pSpent)}`);
-    lines.push(`sales: ${money(num(pSales) != null ? num(pSales) : pSales)}`);
-    lines.push(`orders: ${esc(pOrders != null && pOrders !== '' ? pOrders : '—')}`);
-    lines.push(`avg order value: ${money(num(pAvg) != null ? num(pAvg) : pAvg)}`);
+    lines.push(`<b>${esc(slotLabel(prevSlot.raw))} to ${esc(slotLabel(slot.raw))}</b>${esc(missed)}`);
+    lines.push(`total spend: ${asMoney(pSpent)}`);
+    lines.push(`total sales: ${asMoney(pSales)}`);
+    lines.push(`%: ${asText(pPct)}`);
+    lines.push(`orders: ${asText(pOrders)}`);
+    lines.push(`avg value: ${asMoney(pAvg)}`);
     lines.push('');
   }
-  lines.push('<b>Today so far</b>');
-  lines.push(`spent: ${money(meta.spend)} of ${money(budgets.total)} budgeted`);
-  lines.push(`sales: ${money(wc.sales)}`);
-  lines.push(`orders: ${wc.orders}`);
-  lines.push(`avg order value: ${wc.orders ? money(wc.sales / wc.orders) : '—'}`);
-  lines.push('');
   lines.push('<b>Decision block</b>');
   for (let i = 0; i < decision.length; i++) {
     const [a, b] = decision[i] || [];
@@ -477,4 +520,18 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
   }
   const sent = NO_ALERT ? false : await telegramSend(lines.join('\n'));
   console.log(`  -> Telegram ${sent ? 'sent' : 'NOT sent'}`);
+
+  // ---- screenshots: the ladder table + the decision block, as photos ----
+  // Ranges are derived, not hardcoded: the ladder shot stops at the last time row in
+  // column A (junk formula rows below it stay out of frame), and the decision shot
+  // follows the label anchor — both survive Colin's row inserts. A screenshot failure
+  // must never fail the run: the sheet is already written and the text alert sent.
+  if (sent && !NO_ALERT) {
+    try {
+      const lastLadderRow = colA[colA.length - 1].row;
+      await telegramSendPhoto(await rangeShot(`A1:M${lastLadderRow}`), `${BRAND} intervals`);
+      await telegramSendPhoto(await rangeShot(`A${anchor}:B${anchor + 13}`), `${BRAND} decision block`);
+      console.log('  -> Telegram screenshots sent (2)');
+    } catch (e) { console.log('  !! screenshots failed (alert already sent): ' + e.message); }
+  }
 })().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });

@@ -15,9 +15,12 @@ sanctioned minute-cap workaround (see main CLAUDE.md "GitHub Actions minute budg
   repo. No `pull_request` trigger, so fork PRs can never access the secrets.
 
 ## Files (COPY of the laptop engine — keep in sync)
-`tracker.js` + `run-dates.json` are copied from `shared/maf-interval-tracker/`. **Any edit
-to the engine must be applied to BOTH** (laptop copy + this copy, then push). Two copies is
-an accepted trade-off for a seasonal tool (Colin, 21 Jul 2026).
+`tracker.js` + `render-shot.py` + `run-dates.json` are copied from
+`shared/maf-interval-tracker/`. **Any edit to the engine must be applied to BOTH**
+(laptop copy + this copy, then push). Two copies is an accepted trade-off for a seasonal
+tool (Colin, 21 Jul 2026). `render-shot.py` (since 28 Jul 2026) renders the two Telegram
+screenshot attachments (ladder table + decision block) from the Sheets range-PDF export;
+the workflow pip-installs `pypdfium2 pillow` for it.
 
 ## How it runs
 - 3 crons, each ~2.5h before its slot; a step maps the cron string → `--target=HHMM`:
@@ -41,9 +44,10 @@ MLB: `META_ACCESS_TOKEN`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`.
 LLV (added 24 Jul 2026 from `llv/.env`): `LLV_META_ACCESS_TOKEN`,
 `LLV_WOOCOMMERCE_CONSUMER_KEY`, `LLV_WOOCOMMERCE_CONSUMER_SECRET`.
 Shared: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
-(digitalmarketing@ trio), and — once the bot exists — `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_CHAT_ID`. Until the Telegram secrets are added the cloud fills the sheet but
-sends no alert (graceful skip).
+(digitalmarketing@ trio), plus `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (set 28 Jul 2026
+— the "last day tracker" bot, `@last_day_tracker_bot`, one bot for both brands; local
+copy of the creds in `~/.telegram.env`). If the Telegram secrets are ever missing the
+cloud still fills the sheet, it just sends no alert (graceful skip).
 
 ## Teardown (end of MAF26 season)
 Disable/delete this workflow with the other MAF jobs. Or just clear `run-dates.json` — the
