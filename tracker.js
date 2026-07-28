@@ -5,7 +5,9 @@
  * before, 1 day before, last day), fills the brand's "moving average" tab
  * at the interval times listed in column A (1030/1145/1400/1600/1745/2000/2130/2300):
  *   col I = TOTAL Meta MAF26 spend so far today (campaigns with "MAF26" in the name)
- *   col J = TOTAL WooCommerce sales so far today (paid orders: completed+processing, gross)
+ *   col J = TOTAL WooCommerce sales so far today — refund-netted `wc-analytics` total_sales,
+ *           the SAME number Colin's WooCommerce Analytics dashboard shows. Never "simplify" it
+ *           back to a gross order sum (a raw read said $960 vs his $708).
  *   col K = TOTAL paid-order count so far today
  *   B17   = total daily budget of ALL active MAF26 campaigns (live from Meta)
  *   B18   = daily budget of the purchase-objective MAF26 campaign(s)
