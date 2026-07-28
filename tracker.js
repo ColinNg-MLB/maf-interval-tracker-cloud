@@ -353,24 +353,44 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
       if (r[0] && iv != null) last = { slot: r[0], spend: iv, sales: cellNum(r[9]) || 0, orders: cellNum(r[10]) || 0 };
     }
     const nn = nowSGT();
+    // same block layout + labels as the scheduled alert (Colin's spec, 28 Jul 2026):
+    // Overall first, then the since-last-slot block, each with a % line (spend/sales).
+    // Values here are LIVE reads (a spot never writes the sheet), so they're formatted
+    // in code: plain numbers with thousands commas, no "$".
+    const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pct = (spend, sales) => (sales > 0 ? (spend / sales * 100).toFixed(2) + '%' : (spend > 0 ? '999.00%' : '—'));
     const lines = [`<b>${BRAND} MAF26 — spot check ${slotLabel(nn.getUTCHours() * 100 + nn.getUTCMinutes())}</b>`, ''];
-    if (last) {
-      const dOrders = wc.orders - last.orders, dSales = wc.sales - last.sales;
-      lines.push(`<b>since the ${slotLabel(last.slot)} slot</b>`);
-      lines.push(`spent: ${money(meta.spend - last.spend)}`);
-      lines.push(`sales: ${money(dSales)}`);
-      lines.push(`orders: ${dOrders}`);
-      lines.push(`avg order value: ${dOrders ? money(dSales / dOrders) : '—'}`);
-      lines.push('');
-    }
-    lines.push('<b>Today so far</b>');
-    lines.push(`spent: ${money(meta.spend)} of ${money(budgets.total)} budgeted${budgets.total ? ' (' + (meta.spend / budgets.total * 100).toFixed(1) + '%)' : ''}`);
-    lines.push(`sales: ${money(wc.sales)}`);
+    lines.push('<b>Overall</b>');
+    lines.push(`total spend: ${fmt(meta.spend)}`);
+    lines.push(`total sales: ${fmt(wc.sales)}`);
+    lines.push(`%: ${pct(meta.spend, wc.sales)}`);
     lines.push(`orders: ${wc.orders}`);
-    lines.push(`avg order value: ${wc.orders ? money(wc.sales / wc.orders) : '—'}`);
-    lines.push(`ad spend as % of sales: ${wc.sales ? (meta.spend / wc.sales * 100).toFixed(2) + '%' : '—'}`);
+    lines.push(`avg value: ${wc.orders ? fmt(wc.sales / wc.orders) : '—'}`);
+    if (last) {
+      const dOrders = wc.orders - last.orders, dSales = wc.sales - last.sales, dSpend = meta.spend - last.spend;
+      lines.push('');
+      lines.push(`<b>since the ${slotLabel(last.slot)} slot</b>`);
+      lines.push(`total spend: ${fmt(dSpend)}`);
+      lines.push(`total sales: ${fmt(dSales)}`);
+      lines.push(`%: ${pct(dSpend, dSales)}`);
+      lines.push(`orders: ${dOrders}`);
+      lines.push(`avg value: ${dOrders ? fmt(dSales / dOrders) : '—'}`);
+    }
     console.log('\n' + lines.join('\n').replace(/<[^>]+>/g, '') + '\n');
-    if (!NO_ALERT) console.log(`-> Telegram ${(await telegramSend(lines.join('\n'))) ? 'sent' : 'NOT sent'}`);
+    if (!NO_ALERT) {
+      const sent = await telegramSend(lines.join('\n'));
+      console.log(`-> Telegram ${sent ? 'sent' : 'NOT sent'}`);
+      // same two screenshots as the scheduled fills (Colin, 28 Jul 2026 — the sheet shows
+      // the LAST FILLED slot; a spot check never writes, so the photos can lag the text)
+      if (sent) {
+        try {
+          const lastTimeRow = grid.reduce((acc, r, i) => (r[0] && /^\d{3,4}$/.test(String(r[0]).trim()) ? i + 2 : acc), 0);
+          await telegramSendPhoto(await rangeShot(`A1:M${lastTimeRow || anchor - 1}`), `${BRAND} intervals (as of last filled slot)`);
+          await telegramSendPhoto(await rangeShot(`A${anchor}:B${anchor + 13}`), `${BRAND} decision block`);
+          console.log('-> Telegram screenshots sent (2)');
+        } catch (e) { console.log('!! screenshots failed (text already sent): ' + e.message); }
+      }
+    }
     return;
   }
 
