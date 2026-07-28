@@ -45,8 +45,9 @@ LLV (added 24 Jul 2026 from `llv/.env`): `LLV_META_ACCESS_TOKEN`,
 `LLV_WOOCOMMERCE_CONSUMER_KEY`, `LLV_WOOCOMMERCE_CONSUMER_SECRET`.
 Shared: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
 (digitalmarketing@ trio), plus `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (set 28 Jul 2026
-— the "last day tracker" bot, `@last_day_tracker_bot`, one bot for both brands; local
-copy of the creds in `~/.telegram.env`). If the Telegram secrets are ever missing the
+— the "Last Day Tracker" bot, `@last_day_tracker_bot`, one bot for both brands; local copy
+of the creds in `~/.telegram.env`; chat id = the "Last Day Tracker" GROUP -5434698446 with
+Colin + Kien + Shannon, switched from Colin's DM same day). If the Telegram secrets are ever missing the
 cloud still fills the sheet, it just sends no alert (graceful skip).
 
 ## Teardown (end of MAF26 season)
