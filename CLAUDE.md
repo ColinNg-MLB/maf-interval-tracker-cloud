@@ -15,7 +15,7 @@ sanctioned minute-cap workaround (see main CLAUDE.md "GitHub Actions minute budg
   repo. No `pull_request` trigger, so fork PRs can never access the secrets.
 
 ## Files (COPY of the laptop engine — keep in sync)
-`tracker.js` + `render-shot.py` + `run-dates.json` are copied from
+`tracker.js` + `render-shot.py` + `round-schedule.json` + `run-dates.json` are copied from
 `shared/maf-interval-tracker/`. **Any edit to the engine must be applied to BOTH**
 (laptop copy + this copy, then push). Two copies is an accepted trade-off for a seasonal
 tool (Colin, 21 Jul 2026). `render-shot.py` (since 28 Jul 2026) renders the two Telegram
@@ -35,7 +35,12 @@ the workflow pip-installs `pypdfium2 pillow` for it.
   `WAIT_CAP_MIN`), then — if the laptop hasn't already filled col I for that row — pulls
   Meta spend + WC-analytics sales + live budgets, writes the row, sends Telegram. If the
   laptop already filled it, exits silently (no double write, no double alert).
-- `run-dates.json` gate = fast no-op on non-round days (checked before the sleep).
+- **Arming gate = fast no-op on non-round days (checked BEFORE the sleep).** Since 3 Aug 2026
+  the armed days are derived from `round-schedule.json` (each round's CLOSE + the 2 days
+  before it), unioned with any manual `run-dates.json` entries. Both files live here as well
+  as on the laptop — **a round-date change must be pushed to this copy too**, or the cloud
+  backup silently skips the evening slots the laptop was covering. Full rationale + the
+  3 Aug 2026 silent-no-op incident: `shared/maf-interval-tracker/CLAUDE.md`.
 - Manual test: Actions → Run workflow → `target=2000`, `apply=false` (dry). Data lands
   ~1-2 min after the slot; console shows the sleep countdown.
 
