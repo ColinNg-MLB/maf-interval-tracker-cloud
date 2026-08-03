@@ -12,8 +12,20 @@ name: MAF26 Interval Tracker (cloud backup)
 # The script's own run-dates.json gate (per-brand since 24 Jul 2026) makes non-round
 # days a fast no-op.
 #
-# BOTH brands run as a matrix since 24 Jul 2026 — each brand only proceeds on ITS OWN
-# armed dates, so a round-close day for one brand is a no-op for the other.
+# BOTH brands run in ONE job, SEQUENTIALLY (MLB to completion, then LLV) since 3 Aug 2026 —
+# each brand only proceeds on ITS OWN armed dates, so a round-close day for one brand is a
+# no-op for the other.
+#
+# WHY NOT A MATRIX (it was one, 24 Jul - 3 Aug 2026): two parallel jobs hitting the same slot
+# minute interleaved their Telegram messages — MLB text, LLV text, MLB photos, LLV photos —
+# because the screenshots take ~10s longer to build than the text. Colin wants MLB text +
+# MLB screenshots, then LLV text + LLV screenshots. Sequential in one job makes it
+# deterministic. NOTE: `max-parallel: 1` on the matrix would NOT have worked — LLV's job
+# would only start after MLB's finished, and MLB's job includes the ~2.5h idle wait, so
+# LLV would wake long after its slot. Running both inside one job after ONE wait is the fix:
+# MLB sleeps to slot+1min, fills, sends; LLV then sees the target already passed and its
+# wait loop proceeds immediately (`waitMin <= 0` branch in tracker.js).
+# LLV must run even if MLB fails — hence `set +e` and the explicit exit-code roll-up.
 
 on:
   schedule:
@@ -39,27 +51,18 @@ jobs:
   fill:
     runs-on: ubuntu-latest
     timeout-minutes: 300
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - brand: MLB
-            meta_secret: META_ACCESS_TOKEN
-            wc_key_secret: WC_CONSUMER_KEY
-            wc_secret_secret: WC_CONSUMER_SECRET
-          - brand: LLV
-            meta_secret: LLV_META_ACCESS_TOKEN
-            wc_key_secret: LLV_WOOCOMMERCE_CONSUMER_KEY
-            wc_secret_secret: LLV_WOOCOMMERCE_CONSUMER_SECRET
     concurrency:
-      group: interval-tracker-${{ matrix.brand }}-${{ github.event.schedule || github.event.inputs.target || github.run_id }}
+      group: interval-tracker-${{ github.event.schedule || github.event.inputs.target || github.run_id }}
       cancel-in-progress: false
     env:
-      BRAND: ${{ matrix.brand }}
       TZ: Asia/Singapore
-      META_ACCESS_TOKEN: ${{ secrets[matrix.meta_secret] }}
-      WC_CONSUMER_KEY: ${{ secrets[matrix.wc_key_secret] }}
-      WC_CONSUMER_SECRET: ${{ secrets[matrix.wc_secret_secret] }}
+      # Both brands' creds are in the job env; the run step picks the right pair per brand.
+      MLB_META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      MLB_WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
+      MLB_WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+      LLV_META_ACCESS_TOKEN: ${{ secrets.LLV_META_ACCESS_TOKEN }}
+      LLV_WC_CONSUMER_KEY: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_KEY }}
+      LLV_WC_CONSUMER_SECRET: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_SECRET }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
@@ -80,7 +83,7 @@ jobs:
             "30 12 * * *") echo "target=2300" >> "$GITHUB_OUTPUT" ;;
             *)             echo "target=${{ github.event.inputs.target }}" >> "$GITHUB_OUTPUT" ;;
           esac
-      - name: Run tracker
+      - name: Run tracker (MLB, then LLV — order matters, see header)
         run: |
           ARGS="--skip-if-filled"
           TARGET="${{ steps.map.outputs.target }}"
@@ -90,5 +93,32 @@ jobs:
             ARGS="$ARGS --apply"
           fi
           if [ "${{ github.event.inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
-          echo "node tracker.js $ARGS"
-          node tracker.js $ARGS
+
+          # LLV must run even if MLB fails, so don't let -e kill the step early.
+          set +e
+          rc_total=0
+
+          echo "::group::MLB"
+          BRAND=MLB \
+            META_ACCESS_TOKEN="$MLB_META_ACCESS_TOKEN" \
+            WC_CONSUMER_KEY="$MLB_WC_CONSUMER_KEY" \
+            WC_CONSUMER_SECRET="$MLB_WC_CONSUMER_SECRET" \
+            node tracker.js $ARGS
+          rc_mlb=$?
+          echo "::endgroup::"
+          echo "MLB exit=$rc_mlb"
+          [ $rc_mlb -ne 0 ] && rc_total=1
+
+          echo "::group::LLV"
+          BRAND=LLV \
+            META_ACCESS_TOKEN="$LLV_META_ACCESS_TOKEN" \
+            WC_CONSUMER_KEY="$LLV_WC_CONSUMER_KEY" \
+            WC_CONSUMER_SECRET="$LLV_WC_CONSUMER_SECRET" \
+            node tracker.js $ARGS
+          rc_llv=$?
+          echo "::endgroup::"
+          echo "LLV exit=$rc_llv"
+          [ $rc_llv -ne 0 ] && rc_total=1
+
+          echo "--- summary: MLB=$rc_mlb LLV=$rc_llv ---"
+          exit $rc_total
