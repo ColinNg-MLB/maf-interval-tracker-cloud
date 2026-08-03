@@ -25,10 +25,21 @@ the workflow pip-installs `pypdfium2 pillow` for it.
 ## How it runs
 - 3 crons, each ~2.5h before its slot; a step maps the cron string → `--target=HHMM`:
   `30 9 * * *`→2000, `0 11 * * *`→2130, `30 12 * * *`→2300 (SGT).
-- **2-brand matrix since 24 Jul 2026 (MLB + LLV):** every cron/dispatch runs BOTH brands as
-  parallel jobs; each brand proceeds only if today is in ITS list in `run-dates.json`
-  (per-brand format `{"MLB":[...],"LLV":[...]}`), so a round-close day for one brand is a
-  fast no-op for the other. Per-brand secrets are mapped via `secrets[matrix.*]`.
+- **BOTH brands in ONE job, SEQUENTIALLY (MLB then LLV) since 3 Aug 2026.** Each brand
+  proceeds only if today is armed for IT, so a round-close day for one brand is a fast no-op
+  for the other. Both brands' secrets sit in the job `env` under `MLB_*` / `LLV_*` names and
+  the run step exports the right pair per brand — **the repo secret names themselves did not
+  change** (`META_ACCESS_TOKEN`/`WC_*` for MLB, `LLV_META_ACCESS_TOKEN`/`LLV_WOOCOMMERCE_*`
+  for LLV).
+  - **Was a parallel 2-brand matrix 24 Jul – 3 Aug 2026.** Replaced because the two jobs hit
+    the same slot minute and their Telegram sends interleaved (MLB text, LLV text, MLB
+    photos, LLV photos) — screenshots take ~10s longer to build than text.
+  - **`max-parallel: 1` is NOT the fix — don't "simplify" back to it.** LLV's job would only
+    start after MLB's job *finished*, and MLB's job contains the ~2.5h idle wait, so LLV
+    would wake long after its slot. Both brands must share ONE wait: MLB sleeps to slot+1min,
+    fills and sends; LLV then hits the `waitMin <= 0` branch and proceeds immediately.
+  - The run step uses `set +e` and rolls up both exit codes, so **LLV still runs when MLB
+    fails** and the job still reports red if either brand failed.
 - Dispatch inputs: `target` (slot HHMM), `apply` (default false = dry), `force`
   (default false; ignores the run-dates gate — testing only).
 - `tracker.js --target=HHMM --skip-if-filled --apply`: sleeps until slot+1min (cap 3.5h via
