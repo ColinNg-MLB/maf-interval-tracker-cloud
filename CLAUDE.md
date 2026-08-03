@@ -41,8 +41,14 @@ the workflow pip-installs `pypdfium2 pillow` for it.
   as on the laptop — **a round-date change must be pushed to this copy too**, or the cloud
   backup silently skips the evening slots the laptop was covering. Full rationale + the
   3 Aug 2026 silent-no-op incident: `shared/maf-interval-tracker/CLAUDE.md`.
-- Manual test: Actions → Run workflow → `target=2000`, `apply=false` (dry). Data lands
+- Manual test: Actions → Run workflow → `target=<slot>`, `apply=false` (dry). Data lands
   ~1-2 min after the slot; console shows the sleep countdown.
+  **Pick a target LESS THAN `WAIT_CAP_MIN` (210 min) away or the run fails by design** —
+  `FATAL: target X is N min away (> 210 cap)` is the anti-runaway guard doing its job, not a
+  bug (3 Aug 2026: dispatched `target=2000` at 11:03 SGT, 538 min out, and read the red X as
+  a regression for a moment). The gate/auth steps still run BEFORE the abort, so a
+  deliberately-capped dispatch is a valid cheap smoke test of everything up to the sleep —
+  just say that is what it proved, and don't claim the fill path was exercised.
 
 ## Secrets (set via `gh secret set`)
 MLB: `META_ACCESS_TOKEN`, `WC_CONSUMER_KEY`, `WC_CONSUMER_SECRET`.
