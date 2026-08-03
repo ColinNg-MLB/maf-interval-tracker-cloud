@@ -320,18 +320,56 @@ const gFormula = (r, p) => `=IF(AND(ISNUMBER(F${r}), ISNUMBER(F${p}), F${p}<>0),
 // performance change: ≤+15% hold, ≤+25% → -10%, ≤+40% → -15%, worse → -20%
 const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0.15,0.25,IF(F${r}<0.2,0.2,IF(NOT(ISNUMBER(G${r})),0,IF(G${r}<=0.15,0,IF(G${r}<=0.25,-0.1,IF(G${r}<=0.4,-0.15,-0.2))))))))`;
 
+// Derive armed dates from round-schedule.json: each round's CLOSE plus the N days before
+// it (Colin's "last 3 days of a round" rule). Added 3 Aug 2026 — the old run-dates.json was
+// hand-edited per round and got forgotten, so LLV's whole 2 Aug and both brands' 3 Aug 1030
+// slot silently no-opped two days before a close. Returns [] on any problem; the caller
+// falls back to run-dates.json so a bad schedule file can never block a manually armed day.
+function scheduledArmDates(brand) {
+  const p = path.join(__dirname, 'round-schedule.json');
+  if (!fs.existsSync(p)) return [];
+  const sch = JSON.parse(fs.readFileSync(p, 'utf8'));
+  const back = Number.isFinite(Number(sch.armDaysBeforeClose)) ? Number(sch.armDaysBeforeClose) : 2;
+  const closes = (sch.closes && sch.closes[brand]) || {};
+  const out = [];
+  for (const [round, iso] of Object.entries(closes)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) continue;
+    for (let d = back; d >= 0; d--) {
+      const dt = new Date(iso + 'T00:00:00Z');
+      dt.setUTCDate(dt.getUTCDate() - d);
+      out.push({ date: dt.toISOString().slice(0, 10), round, close: iso });
+    }
+  }
+  return out;
+}
+
 (async () => {
   // ---- run-date gate: the scheduled task fires daily; only round-close days proceed ----
   // (--spot and --add-slot are manual, human-initiated actions — never gated)
-  // run-dates.json is per-brand since 24 Jul 2026 ({"MLB":[...],"LLV":[...]}) — the brands'
-  // round closes don't align. A legacy flat array still works and applies to every brand.
+  // TWO sources, unioned: round-schedule.json (derived, the normal path) and run-dates.json
+  // (manual override / ad-hoc extra days). run-dates.json is per-brand since 24 Jul 2026
+  // ({"MLB":[...],"LLV":[...]}) — a legacy flat array still applies to every brand.
   const runDatesPath = path.join(__dirname, 'run-dates.json');
   const rdRaw = fs.existsSync(runDatesPath) ? JSON.parse(fs.readFileSync(runDatesPath, 'utf8')) : [];
   const runDates = Array.isArray(rdRaw) ? rdRaw : (rdRaw[BRAND] || []);
   const today = todaySGT();
-  if (!FORCE && !SPOT && !runDates.includes(today)) {
-    console.log(`[${BRAND}] ${today} is not in run-dates.json — nothing to do (use --force to override).`);
+  let schedArmed = [];
+  try {
+    schedArmed = scheduledArmDates(BRAND);
+  } catch (e) {
+    console.log(`[${BRAND}] !! round-schedule.json unreadable (${e.message}) — using run-dates.json only`);
+  }
+  const schedHit = schedArmed.find((x) => x.date === today);
+  const manualHit = runDates.includes(today);
+  if (!FORCE && !SPOT && !schedHit && !manualHit) {
+    const next = schedArmed.filter((x) => x.date > today).sort((a, b) => a.date.localeCompare(b.date))[0];
+    console.log(`[${BRAND}] ${today} is not a round-close window — nothing to do.` +
+      (next ? ` Next armed day: ${next.date} (${next.round}, closes ${next.close}).` : ' No future rounds in round-schedule.json.') +
+      ' (--force to override.)');
     return;
+  }
+  if (!SPOT && (schedHit || manualHit)) {
+    console.log(`[${BRAND}] armed for ${today} — ${schedHit ? `${schedHit.round} close ${schedHit.close}` : 'manual run-dates.json entry'}${schedHit && manualHit ? ' (also in run-dates.json)' : ''}`);
   }
 
   // ---- locate the decision block by its label — a row insert shifts it, so never hardcode row 17 ----
