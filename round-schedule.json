@@ -3,7 +3,7 @@
   "_source_MLB": "'2026 of MLB Q3 Planning' (Drive 1e_Z-UhwJklr88xUP4ZpmpXdWqwLwhDBo), 'Finance' tab rows 19-40. Read 3 Aug 2026; 'CN Finance' tab agrees.",
   "_source_LLV": "'La Levain Q3 2026x' (1_zMcwuU9vOkjYOWB5GdfQNdq6myoWbPWw4bLe9uLGF0), 'Finance' tab (gid 0) rows 5-11. Read 3 Aug 2026.",
   "_warning_LLV": "The 'CN Finance' tab (gid 963845414) of the SAME LLV workbook still says R5 ends 2 Sep / R6 starts 3 Sep. It is STALE - Colin revised R5 to 1 Sep on 28 Jul 2026 and the 'Finance' tab carries the correction. Trust 'Finance'. Flagged to Colin, not ours to edit.",
-  "_unconfirmed": "MLB R8 has no stated end date in the Finance tab (row 40 reads 'R8 17th Sep' only). 2026-09-25 below = Mid-Autumn Festival, ASSUMED as its last day so the final run-in is armed. Confirm with Colin.",
+  "_note_MLB_R8": "MLB R8 has no stated end date in the Finance tab (row 40 reads 'R8 17th Sep' only). CONFIRMED BY COLIN 3 Aug 2026: keep 2026-09-25 (Mid-Autumn Festival) below as R8's assumed last day, so the final run-in to the festival IS armed. It is an assumption standing in for a missing sheet value, not a price step-up date - do not quote it as one in customer-facing copy.",
   "armDaysBeforeClose": 2,
   "closes": {
     "MLB": {
