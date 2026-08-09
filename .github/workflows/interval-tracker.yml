@@ -1,7 +1,15 @@
 name: MAF26 Interval Tracker (cloud backup)
 
 # Public-repo backup for shared/maf-interval-tracker. The LAPTOP (Windows Task Scheduler)
-# is primary; this fills any slot the laptop misses (laptop off in the evenings).
+# is primary; this fills any slot the laptop misses.
+#
+# COVERS ALL 8 SLOTS since 9 Aug 2026 (was evenings-only 2000/2130/2300). The daytime rungs
+# were added because the laptop being ASLEEP kills them silently: Colin's machine slept
+# Sat 8 Aug 22:11 -> Sun 9 Aug 15:26 (17h 15m), so LLV's 1030/1145/1400 never ran on an
+# armed day (R3 close 11 Aug) and Windows then ran the missed job at 15:32, which landed in
+# the 1600 row (28 min, inside the +/-35 tolerance) and alerted "2pm to 4pm" before 4pm.
+# The laptop stays PRIMARY for punctuality; --skip-if-filled makes this a silent no-op
+# whenever the laptop got there first.
 # Public repo = unlimited free Actions minutes — REQUIRED because each run IDLES ~2.5h
 # waiting for the exact slot minute, which on a private repo would burn ~150 billed min/run
 # and blow the 2,000-min account cap.
@@ -29,6 +37,15 @@ name: MAF26 Interval Tracker (cloud backup)
 
 on:
   schedule:
+    # Every cron starts ~2.7h before its slot and idles (tracker.js --target). The idle is
+    # capped at 210 min (WAIT_CAP_MIN), so every entry below sits at 161/151 min — enough
+    # headroom for GitHub's 30-90 min cron lag without tripping the cap. Minutes are
+    # deliberately off the hour: :00 UTC is GitHub's busiest, laggiest slot.
+    - cron: '50 23 * * *'   # 07:50 SGT start -> target 1030 SGT
+    - cron: '5 1 * * *'     # 09:05 SGT start -> target 1145 SGT
+    - cron: '20 3 * * *'    # 11:20 SGT start -> target 1400 SGT
+    - cron: '20 5 * * *'    # 13:20 SGT start -> target 1600 SGT
+    - cron: '5 7 * * *'     # 15:05 SGT start -> target 1745 SGT
     - cron: '30 9 * * *'    # 17:30 UTC start -> target 2000 SGT (12:00 UTC)
     - cron: '0 11 * * *'    # 19:00 UTC start -> target 2130 SGT (13:30 UTC)
     - cron: '30 12 * * *'   # 20:30 UTC start -> target 2300 SGT (15:00 UTC)
@@ -77,7 +94,15 @@ jobs:
       - name: Map schedule -> target slot
         id: map
         run: |
+          # One arm per cron above. A cron with no arm here falls through to the manual
+          # input (blank on a scheduled run) = "nearest slot to now", which after a lagged
+          # start is the WRONG rung — so every cron MUST have a matching line.
           case "${{ github.event.schedule }}" in
+            "50 23 * * *") echo "target=1030" >> "$GITHUB_OUTPUT" ;;
+            "5 1 * * *")   echo "target=1145" >> "$GITHUB_OUTPUT" ;;
+            "20 3 * * *")  echo "target=1400" >> "$GITHUB_OUTPUT" ;;
+            "20 5 * * *")  echo "target=1600" >> "$GITHUB_OUTPUT" ;;
+            "5 7 * * *")   echo "target=1745" >> "$GITHUB_OUTPUT" ;;
             "30 9 * * *")  echo "target=2000" >> "$GITHUB_OUTPUT" ;;
             "0 11 * * *")  echo "target=2130" >> "$GITHUB_OUTPUT" ;;
             "30 12 * * *") echo "target=2300" >> "$GITHUB_OUTPUT" ;;
