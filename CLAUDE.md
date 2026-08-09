@@ -1,8 +1,35 @@
 # MAF26 Interval Tracker — Cloud Backup (PUBLIC repo)
 
 Backup runner for `shared/maf-interval-tracker/`. The **laptop** (Windows Task Scheduler)
-is primary and punctual; this covers slots the laptop misses (Colin's laptop is off in the
-evenings). Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
+is primary and punctual; this covers slots the laptop misses.
+Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
+
+**Covers ALL 8 slots since 9 Aug 2026** (commit b24c87a). It was evenings-only
+(2000/2130/2300) on the assumption that the laptop was awake through the working day —
+wrong. A laptop that is merely ASLEEP loses its triggers exactly like one that is off:
+Colin's slept Sat 8 Aug 22:11 → Sun 9 Aug 15:26 (17h 15m), so LLV's 1030/1145/1400 rungs
+never ran on an armed day, and Windows `StartWhenAvailable` then ran the missed job at
+15:32 — 28 min from the 1600 rung, inside the ±35 tolerance — so it filled the **4pm** row
+and alerted "2pm to 4pm" at half past three. Cron→slot map:
+
+| Cron (UTC) | Starts (SGT) | Target slot | Idle |
+|---|---|---|---|
+| `50 23 * * *` | 07:50 | 1030 | 161 min |
+| `5 1 * * *` | 09:05 | 1145 | 161 min |
+| `20 3 * * *` | 11:20 | 1400 | 161 min |
+| `20 5 * * *` | 13:20 | 1600 | 161 min |
+| `5 7 * * *` | 15:05 | 1745 | 161 min |
+| `30 9 * * *` | 17:30 | 2000 | 151 min |
+| `0 11 * * *` | 19:00 | 2130 | 151 min |
+| `30 12 * * *` | 20:30 | 2300 | 151 min |
+
+**Every cron MUST have a matching arm in the `Map schedule -> target slot` case block.**
+A cron with no arm falls through to the manual input, which is blank on a scheduled run —
+that means "nearest slot to now", and after a lagged start that is the WRONG rung, filled
+silently. Minutes are deliberately off the hour (`:00` UTC is GitHub's busiest, laggiest
+slot). Idle stays under `WAIT_CAP_MIN` (210 min) with room for the 30–90 min cron lag.
+**A `workflow_dispatch` cannot test these arms** — it sends an empty `github.event.schedule`,
+so only a real scheduled fire exercises them; verify the mapping statically instead.
 
 ## Why public (do not move to the private automations repo)
 Each run **idles ~2.5h** waiting for the exact slot minute (GitHub cron fires 30-90+ min
@@ -50,7 +77,7 @@ the workflow pip-installs `pypdfium2 pillow` for it.
   the armed days are derived from `round-schedule.json` (each round's CLOSE + the 2 days
   before it), unioned with any manual `run-dates.json` entries. Both files live here as well
   as on the laptop — **a round-date change must be pushed to this copy too**, or the cloud
-  backup silently skips the evening slots the laptop was covering. Full rationale + the
+  backup silently skips the slots the laptop was covering. Full rationale + the
   3 Aug 2026 silent-no-op incident: `shared/maf-interval-tracker/CLAUDE.md`.
 - Manual test: Actions → Run workflow → `target=<slot>`, `apply=false` (dry). Data lands
   ~1-2 min after the slot; console shows the sleep countdown.
