@@ -31,6 +31,18 @@ slot). Idle stays under `WAIT_CAP_MIN` (210 min) with room for the 30–90 min c
 **A `workflow_dispatch` cannot test these arms** — it sends an empty `github.event.schedule`,
 so only a real scheduled fire exercises them; verify the mapping statically instead.
 
+## `--skip-if-filled` needs the fill-date stamp — never weaken it back to "is the cell empty?"
+This runner passes `--skip-if-filled` so it no-ops whenever the laptop already wrote the
+slot. Until 11 Aug 2026 that check only asked whether `I<row>` was non-empty, which cannot
+tell a laptop fill from leftovers. **Mon 10 Aug 2026: MLB armed (R4 close 12 Aug), laptop off
+all day, all 8 slots fired, all 8 exited with "already filled (I2=33.99) — the laptop run got
+it" — those were Wed 5 Aug's numbers.** Zero fills, zero Telegram, on an armed day, and
+self-reinforcing: the skip at the 1030 rung meant the day-clear never ran, so every later
+rung looked filled too. The engine now stamps which DAY it last filled (Sheets developer
+metadata on the tab) and skips only when the stamp says today; a missing stamp never skips.
+Verified in CI dry run 31455012179 — both brands read the stamp with the runner's own
+`GOOGLE_*` secrets, no extra scope needed. Full detail: `shared/maf-interval-tracker/CLAUDE.md`.
+
 ## Why public (do not move to the private automations repo)
 Each run **idles ~2.5h** waiting for the exact slot minute (GitHub cron fires 30-90+ min
 late, so we start early and sleep to the target). Idle time is **billed** — on a private
