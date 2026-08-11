@@ -31,6 +31,20 @@ slot). Idle stays under `WAIT_CAP_MIN` (210 min) with room for the 30–90 min c
 **A `workflow_dispatch` cannot test these arms** — it sends an empty `github.event.schedule`,
 so only a real scheduled fire exercises them; verify the mapping statically instead.
 
+## Test-dispatching this workflow (read before picking a `target`)
+- **Leave `target` BLANK for a smoke test.** Blank means "nearest slot to now", which skips
+  the idle loop entirely and finishes in ~30s — the fast way to prove a code change runs in
+  CI. Pair it with `apply=false`.
+- **A `target` more than `WAIT_CAP_MIN` (210 min) from now ABORTS BY DESIGN** and the run goes
+  **red**: `FATAL: target 2300 is 703 min away (> 210 cap) — cron fired far too early`. That
+  guard exists so a wildly-early cron never idles for hours. It also means a careless test
+  dispatch leaves a failure in the run history that looks like a real outage.
+  **Run `31454984084` (11 Aug 2026, 03:18 UTC, red) is exactly that — a mis-targeted manual
+  test, not a fault.** Before diagnosing any red run here, check its `event`: a
+  `workflow_dispatch` failure is usually someone testing.
+- **A dispatch still cannot exercise the cron→target arms** (empty `github.event.schedule`);
+  only a real scheduled fire does. Verify that mapping statically.
+
 ## `--skip-if-filled` needs the fill-date stamp — never weaken it back to "is the cell empty?"
 This runner passes `--skip-if-filled` so it no-ops whenever the laptop already wrote the
 slot. Until 11 Aug 2026 that check only asked whether `I<row>` was non-empty, which cannot
