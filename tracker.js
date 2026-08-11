@@ -27,8 +27,11 @@
  * Only runs on dates listed in run-dates.json (so the daily triggers are inert
  * on non-round days and can never overwrite the tab). --force overrides.
  *
- * At the FIRST slot of the day (row 2) it clears I2:K16 first — yesterday's
- * numbers must not mix into a new day.
+ * On the day's FIRST fill it clears I2:K16 first — yesterday's numbers must not mix
+ * into a new day. "First fill of the day" is proven by an invisible fill-date stamp
+ * (Sheets developer metadata, see readFillStamp) rather than assumed from the 1030 row,
+ * so a day that starts late (laptop off all morning) still clears correctly and
+ * --skip-if-filled can tell a real laptop fill from 5-day-old leftovers.
  *
  * Usage:
  *   BRAND=MLB node tracker.js                 -> dry-run, auto-match slot
@@ -238,6 +241,69 @@ async function sheetClear(range) {
     method: 'POST', headers: { Authorization: 'Bearer ' + token },
   });
   if (status !== 200) throw new Error('Sheets clear error ' + status + ': ' + text.slice(0, 200));
+}
+
+// ---- fill-date stamp (Sheets developer metadata, attached to THIS tab) ----
+// WHY: a filled I<row> tells you the cell is not empty. It does NOT tell you WHICH DAY
+// filled it. Both consumers of that distinction were wrong before 11 Aug 2026:
+//   - --skip-if-filled read stale rows as "the laptop already did it" and no-oped. On
+//     Mon 10 Aug 2026 MLB's ladder still held Wed 5 Aug's numbers, so all 8 cloud slots
+//     skipped and an armed day (R4 close 12 Aug) produced no fills and no alerts at all.
+//   - the day-clear only fired on the 1030 ROW, so a first fill later in the day left
+//     yesterday's numbers in rows 2-4 and measured that interval against another day
+//     (LLV, 9 Aug 2026 — sent a real, actionable, wrong budget recommendation).
+// The stamp is invisible metadata, not a cell: columns A:AD of these tabs are all in use
+// (A:M ladder, N:V historical belts, W:AD reference block) and a visible cell would also
+// land inside the Telegram screenshot frame.
+const STAMP_KEY = 'intervalFillDay';
+// Returns { state, date, raw } where state is:
+//   TODAY   — this tab was already filled today, so a filled row is genuinely today's
+//   STALE   — positive proof the last fill was a DIFFERENT day; the rows are yesterday's
+//   MISSING — no stamp yet (first run after deploy) / unreadable. Deliberately treated as
+//             "don't know": never skip on it (a wrong skip loses a whole day, silently)
+//             and never clear on it (a wrong clear DESTROYS today's real fills).
+async function readFillStamp() {
+  try {
+    const token = await googleToken();
+    const { status, json, text } = await jget(`https://sheets.googleapis.com/v4/spreadsheets/${CFG.sheetId}/developerMetadata:search`, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataFilters: [{ developerMetadataLookup: { metadataKey: STAMP_KEY } }] }),
+    });
+    if (status !== 200) { console.log(`  .. fill-stamp unreadable (HTTP ${status}: ${text.slice(0, 120)}) — treating as MISSING`); return { state: 'MISSING' }; }
+    // Filter by tab: a TAB_OVERRIDE test copy lives in the same spreadsheet and must not
+    // inherit the live tab's stamp.
+    const hit = ((json && json.matchedDeveloperMetadata) || [])
+      .map((m) => m.developerMetadata || {})
+      .find((m) => Number(((m.location || {}).sheetId) || -1) === Number(CFG.gid));
+    if (!hit) return { state: 'MISSING' };
+    let date = String(hit.metadataValue || '');
+    try { const p = JSON.parse(date); if (p && p.d) date = String(p.d); } catch { /* plain date string */ }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { state: 'MISSING', raw: hit.metadataValue, id: hit.metadataId };
+    return { state: date === todaySGT() ? 'TODAY' : 'STALE', date, id: hit.metadataId };
+  } catch (e) {
+    console.log(`  .. fill-stamp read failed (${e.message}) — treating as MISSING`);
+    return { state: 'MISSING' };
+  }
+}
+// Written AFTER a successful fill. A failure here must never fail the run — the sheet is
+// already written and the alert already sent; the cost of a missing stamp is one extra
+// duplicate fill, not a lost day.
+async function writeFillStamp(dateISO, slotRaw, existingId) {
+  const value = JSON.stringify({ d: dateISO, slot: String(slotRaw || ''), by: process.env.GITHUB_ACTIONS ? 'cloud' : 'laptop' });
+  const md = { metadataKey: STAMP_KEY, metadataValue: value, location: { sheetId: Number(CFG.gid) }, visibility: 'DOCUMENT' };
+  const requests = existingId
+    ? [{ updateDeveloperMetadata: { dataFilters: [{ developerMetadataLookup: { metadataId: Number(existingId) } }], developerMetadata: { ...md, metadataId: Number(existingId) }, fields: 'metadataValue' } }]
+    : [{ createDeveloperMetadata: { developerMetadata: md } }];
+  try {
+    const token = await googleToken();
+    const { status, text } = await jget(`https://sheets.googleapis.com/v4/spreadsheets/${CFG.sheetId}:batchUpdate`, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests }),
+    });
+    if (status !== 200) { console.log(`  !! fill-stamp write failed (HTTP ${status}: ${text.slice(0, 160)}) — fill itself is fine`); return false; }
+    console.log(`  -> fill-stamp set to ${dateISO} (${existingId ? 'updated' : 'created'})`);
+    return true;
+  } catch (e) { console.log(`  !! fill-stamp write failed (${e.message}) — fill itself is fine`); return false; }
 }
 
 // ---- Telegram ----
@@ -453,6 +519,18 @@ function scheduledArmDates(brand) {
     }
   }
 
+  // Test/repair hook: force the fill-date stamp to a given day and exit. Used to exercise
+  // the STALE path on a duplicated tab, and to bootstrap the stamp on a tab that was
+  // already filled today by an older build.
+  const setStamp = getArg('set-stamp');
+  if (setStamp) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(setStamp)) throw new Error(`--set-stamp expects YYYY-MM-DD, got "${setStamp}"`);
+    const cur = await readFillStamp();
+    console.log(`  fill-stamp was: ${cur.state === 'MISSING' ? 'unknown' : cur.date}`);
+    await writeFillStamp(setStamp, 'manual', cur.id);
+    return;
+  }
+
   // ---- match the interval slot from column A (read fresh every run — Colin edits the ladder) ----
   const colA = (await sheetGet(`A2:A${anchor - 1}`)).map((r, i) => ({ raw: r[0], row: i + 2 })).filter((x) => x.raw && /^\d{3,4}$/.test(String(x.raw).trim()));
   if (!colA.length) throw new Error(`no interval times found in column A2:A${anchor - 1}`);
@@ -468,13 +546,25 @@ function scheduledArmDates(brand) {
     if (slot.diff > SLOT_TOLERANCE_MIN) throw new Error(`now (${String(Math.floor(nowMin / 60)).padStart(2, '0')}${String(nowMin % 60).padStart(2, '0')} SGT) is ${slot.diff} min from the nearest slot ${slot.raw} — outside ±${SLOT_TOLERANCE_MIN} min, aborting (use --slot= to force)`);
   }
   const isFirstSlot = slot.row === colA[0].row;
-  console.log(`[${BRAND}] interval tracker — ${APPLY ? 'APPLY' : 'DRY-RUN'} — ${today}, slot ${slot.raw} (row ${slot.row})${isFirstSlot ? ' [first slot: will clear I2:K16]' : ''}`);
+  // Which DAY do the numbers currently on the tab belong to? See readFillStamp().
+  const stamp = await readFillStamp();
+  const staleDay = stamp.state === 'STALE';            // positive proof: rows are another day's
+  const needsDayClear = isFirstSlot || staleDay;       // mid-day first fill clears too, since 11 Aug 2026
+  console.log(`[${BRAND}] interval tracker — ${APPLY ? 'APPLY' : 'DRY-RUN'} — ${today}, slot ${slot.raw} (row ${slot.row})`
+    + ` [last fill: ${stamp.state === 'MISSING' ? 'unknown' : stamp.date}${staleDay ? ' — STALE, this is a new day' : ''}]`
+    + `${needsDayClear ? ' [will clear I2:K16]' : ''}`);
 
   if (SKIP_IF_FILLED) {
     const v = ((await sheetGet(`I${slot.row}`, 'UNFORMATTED_VALUE'))[0] || [])[0];
-    if (v !== '' && v != null && Number.isFinite(parseFloat(v))) {
-      console.log(`  slot ${slot.raw} already filled (I${slot.row}=${v}) — the laptop run got it; exiting.`);
+    const filled = v !== '' && v != null && Number.isFinite(parseFloat(v));
+    if (filled && stamp.state === 'TODAY') {
+      console.log(`  slot ${slot.raw} already filled TODAY (I${slot.row}=${v}) — the laptop run got it; exiting.`);
       return;
+    }
+    if (filled) {
+      // The 10 Aug 2026 failure: this used to exit here and lose the whole day.
+      console.log(`  slot ${slot.raw} looks filled (I${slot.row}=${v}) but the last fill was `
+        + `${stamp.state === 'MISSING' ? 'not recorded' : stamp.date} — NOT today's data, so filling it.`);
     }
   }
 
@@ -487,12 +577,15 @@ function scheduledArmDates(brand) {
   if (!APPLY) { console.log('\nDRY-RUN — nothing written. Add --apply to write + alert.'); return; }
 
   // ---- write ----
-  if (isFirstSlot) {
+  if (needsDayClear) {
     // new day: yesterday's numbers must not mix in — snapshot them to the log, then clear.
-    // B:H of the first slot row are also cleared (no previous interval to measure; Colin
-    // confirmed 21 Jul 2026 the first row's B:H should just stay empty).
+    // B:H of the row being filled are also cleared: it is the day's first fill, so there is
+    // no previous interval to measure (Colin confirmed 21 Jul 2026 the first row's B:H
+    // should just stay empty). Since 11 Aug 2026 this also fires when the day's first fill
+    // lands on a LATER rung (laptop off all morning) — proven by the STALE stamp, never
+    // guessed, because a wrong clear would destroy today's real fills.
     const prev = await sheetGet(`A2:K${anchor - 1}`);
-    console.log('  [pre-clear snapshot of I:K]');
+    console.log(`  [pre-clear snapshot of I:K]${staleDay && !isFirstSlot ? `  (day's first fill landed on slot ${slot.raw}, not the first rung)` : ''}`);
     for (const r of prev) if (r[8] || r[9] || r[10]) console.log(`    ${r[0]}: I=${r[8] || ''} J=${r[9] || ''} K=${r[10] || ''}`);
     await sheetClear(`I2:K${anchor - 1}`);
     await sheetClear(`B${slot.row}:H${slot.row}`);
@@ -535,6 +628,9 @@ function scheduledArmDates(brand) {
   );
   await sheetWrite(writes);
   console.log(`  -> wrote I${slot.row}:K${slot.row} + B${anchor}:B${anchor + 1} (budgets)`);
+  // Record WHICH DAY the tab now holds, so the next run (either copy) can tell today's
+  // numbers from yesterday's. Best-effort: never fails the run.
+  await writeFillStamp(today, slot.raw, stamp.id);
 
   // ---- read back the computed sheet for the alert ----
   const grid = await sheetGet(`A1:M${anchor - 1}`);
@@ -569,6 +665,12 @@ function scheduledArmDates(brand) {
     lines.push(`orders: ${asText(pOrders)}`);
     lines.push(`avg value: ${asText(pAvg)}`);
     lines.push('');
+  } else if (earlier.length) {
+    // No previous interval AND earlier rungs exist = the day started late (laptop off all
+    // morning, or a mid-day arm). Say so: stale rows used to look "filled", which made
+    // skippedSlots come back empty and hid the miss entirely (LLV, 9 Aug 2026).
+    lines.push(`<b>First fill of the day</b> — no interval yet (${esc(earlier.map((x) => slotLabel(x.raw)).join(', '))} missed)`);
+    lines.push('');
   }
   lines.push('<b>Decision block</b>');
   for (let i = 0; i < decision.length; i++) {
@@ -577,6 +679,7 @@ function scheduledArmDates(brand) {
     const line = `${esc(a)}: ${esc(b == null || b === '' ? '—' : b)}`;
     lines.push(String(a).toLowerCase().includes('new purchase amount') ? `<b>👉 ${line}</b>` : line);
   }
+  if (NO_ALERT) console.log('  [--no-alert] message that WOULD have been sent:\n' + lines.join('\n').replace(/^/gm, '    | '));
   const sent = NO_ALERT ? false : await telegramSend(lines.join('\n'));
   console.log(`  -> Telegram ${sent ? 'sent' : 'NOT sent'}`);
 
