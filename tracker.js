@@ -409,7 +409,68 @@ function scheduledArmDates(brand) {
   return out;
 }
 
-(async () => {
+// ---- decision-block integrity check ----
+// The alert's headline instruction ("new purchase amount") is a formula COLIN owns, in
+// cells this script deliberately never writes — we write B17/B18 (live Meta budgets) and
+// the ladder; the sheet does the decision math. So a cleared or broken formula there does
+// not throw and does not show up as an error: the cell just goes empty, the alert prints
+// a bolded "👉 new purchase amount: —" where the budget instruction should be, and every
+// cell below it (estimated hour spend, amount to spend, estimated spend for full day,
+// projected sales) silently reads 0 or garbage off it. Found 12 Aug 2026 on LLV, where
+// B25 had been deleted by accident and the whole B25:B30 chain was dead. Same family as
+// the 9 Aug stale-data bug: a live, actionable, WRONG budget recommendation reaching a
+// 3-person Telegram group — except that one was bad inputs and this one is a bad formula.
+//
+// Blank is NOT automatically a fault. "% change of performance vs last interval" and
+// "how much to change" are legitimately empty on the first interval of a day (their own
+// IFERRORs return ""), so only the headline cell is required-numeric. Every other cell is
+// checked solely for spreadsheet ERROR values, which are never legitimate here.
+const HEADLINE_LABEL = 'new purchase amount';
+const ERROR_VALUE = /^#(REF|DIV\/0|VALUE|NAME|N\/A|NUM|ERROR)/i;
+function decisionBlockProblems(decision) {
+  const problems = [];
+  let sawHeadline = false;
+  for (const row of decision || []) {
+    const [a, b] = row || [];
+    const label = String(a == null ? '' : a).trim();
+    const val = String(b == null ? '' : b).trim();
+    if (!label && !val) continue;
+    // Mark the headline as SEEN before testing its value: an erroring headline is still
+    // a present row, and reporting "the row was deleted" on top of "#DIV/0!" would send
+    // Colin looking for the wrong fault.
+    const isHeadline = label.toLowerCase().includes(HEADLINE_LABEL);
+    if (isHeadline) sawHeadline = true;
+    if (ERROR_VALUE.test(val)) {
+      problems.push(`"${label || '(unlabelled row)'}" = ${val}`);
+      continue;
+    }
+    if (isHeadline) {
+      if (!Number.isFinite(parseFloat(val.replace(/[$,%\s]/g, '')))) {
+        problems.push(
+          `"${label}" is ${val === '' ? 'EMPTY' : `not a number ("${val}")`} — the budget ` +
+          'instruction is missing, and the cells below it read off it'
+        );
+      }
+    }
+  }
+  if (!sawHeadline) {
+    problems.push(`no "${HEADLINE_LABEL}" row in the decision block — a row was deleted or relabelled`);
+  }
+  return problems;
+}
+
+// Warning lines for the Telegram message. Goes directly under the title, NOT at the
+// bottom: a broken recommendation must be the first thing in the notification preview,
+// not something Colin scrolls past to reach (discoverability rule, 28 Jul 2026).
+function decisionWarningLines(problems, esc) {
+  if (!problems.length) return [];
+  const out = ['', '<b>⚠️ DECISION BLOCK BROKEN — do not act on the budget instruction below</b>'];
+  for (const p of problems) out.push(`• ${esc(p)}`);
+  out.push('<i>A formula in the decision block is missing or erroring. Fix the cell, then the next slot picks it up.</i>');
+  return out;
+}
+
+const main = async () => {
   // ---- run-date gate: the scheduled task fires daily; only round-close days proceed ----
   // (--spot and --add-slot are manual, human-initiated actions — never gated)
   // TWO sources, unioned: round-schedule.json (derived, the normal path) and run-dates.json
@@ -463,7 +524,17 @@ function scheduledArmDates(brand) {
     // in code: plain numbers with thousands commas, no "$".
     const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const pct = (spend, sales) => (sales > 0 ? (spend / sales * 100).toFixed(2) + '%' : (spend > 0 ? '999.00%' : '—'));
-    const lines = [`<b>${BRAND} MAF26 — spot check ${slotLabel(nn.getUTCHours() * 100 + nn.getUTCMinutes())}</b>`, ''];
+    // A spot check never prints the decision block as text, but it DOES send it as a
+    // photo below — so a broken formula would reach Colin here just as silently as in a
+    // scheduled alert. Same guard, same placement (right under the title). One extra read.
+    const spotProblems = decisionBlockProblems(await sheetGet(`A${anchor}:B${anchor + 13}`));
+    if (spotProblems.length) {
+      console.log('!! DECISION BLOCK BROKEN — spot check will carry a warning:');
+      for (const p of spotProblems) console.log(`   - ${p}`);
+    }
+    const lines = [`<b>${BRAND} MAF26 — spot check ${slotLabel(nn.getUTCHours() * 100 + nn.getUTCMinutes())}</b>`];
+    lines.push(...decisionWarningLines(spotProblems, esc));
+    lines.push('');
     lines.push('<b>Overall</b>');
     lines.push(`total spend: ${fmt(meta.spend)}`);
     lines.push(`total sales: ${fmt(wc.sales)}`);
@@ -644,8 +715,18 @@ function scheduledArmDates(brand) {
   const [iSpend, iSales, iOrders, iPct, iAvg] = [rowVals[8], rowVals[9], rowVals[10], rowVals[11], rowVals[12]];
   const [pSpent, pSales, pOrders, pAvg, pPct] = [rowVals[1], rowVals[2], rowVals[3], rowVals[4], rowVals[5]];
 
+  // Integrity of the sheet's own decision formulas — checked BEFORE the message is built
+  // so the warning can lead. A broken block never fails the run: the ladder was already
+  // written and those numbers are still worth sending.
+  const dProblems = decisionBlockProblems(decision);
+  if (dProblems.length) {
+    console.log('  !! DECISION BLOCK BROKEN — alert will carry a warning:');
+    for (const p of dProblems) console.log(`     - ${p}`);
+  }
+
   const lines = [];
   lines.push(`<b>${BRAND} MAF26 — ${slotLabel(slot.raw)} check</b> (${today})`);
+  lines.push(...decisionWarningLines(dProblems, esc));
   lines.push('');
   lines.push('<b>Overall</b>');
   lines.push(`total spend: ${asText(iSpend)}`);
@@ -696,4 +777,13 @@ function scheduledArmDates(brand) {
       console.log('  -> Telegram screenshots sent (2)');
     } catch (e) { console.log('  !! screenshots failed (alert already sent): ' + e.message); }
   }
-})().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });
+};
+
+// Run when invoked directly; export the pure helpers when required, so the decision-block
+// guard can be unit-tested without executing the tracker (which writes the live sheet and
+// posts to Telegram). Never `require()` this file expecting it to run.
+if (require.main === module) {
+  main().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });
+} else {
+  module.exports = { decisionBlockProblems, decisionWarningLines };
+}
