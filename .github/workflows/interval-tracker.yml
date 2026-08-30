@@ -49,6 +49,38 @@ on:
     - cron: '30 9 * * *'    # 17:30 UTC start -> target 2000 SGT (12:00 UTC)
     - cron: '0 11 * * *'    # 19:00 UTC start -> target 2130 SGT (13:30 UTC)
     - cron: '30 12 * * *'   # 20:30 UTC start -> target 2300 SGT (15:00 UTC)
+
+    # ---- SWEEPERS (added 30 Aug 2026) — a SECOND, independent chance at every slot. ----
+    # WHY: on Sun 30 Aug 2026, an LLV armed day (R5 close 1 Sep), GitHub simply did not
+    # create runs for the 1400, 1600 and 1745 crons — 2 scheduled runs against 5 due by
+    # 17:00 SGT, after 8/8 every single day from 16-29 Aug. Workflow was `active`, repo is
+    # public so minutes are not the constraint, and githubstatus.com read "All Systems
+    # Operational" throughout: GitHub drops scheduled runs on public repos under load and
+    # does not announce it. The laptop is NOT the backstop for this — it was asleep, which
+    # is normal and expected, and the cloud covered all 8 slots fine on the 17-19 Aug closes
+    # with the laptop off. So the belt needed its own braces.
+    #
+    # Each sweeper fires just AFTER its slot, NOT before it. That is deliberate and is what
+    # makes this safe: tracker.js only idles when the target is in the future (waitMin > 0),
+    # so a post-slot sweeper hits the `waitMin <= 0` branch and proceeds immediately. It can
+    # therefore never sit in the idle loop alongside its primary and race it into sending the
+    # same alert twice. It then either (a) finds the slot already filled and exits silently on
+    # --skip-if-filled (the normal case, a ~1 min no-op), or (b) fills the slot late, which is
+    # exactly what the primary would have done and is the whole point.
+    #
+    # KNOWN, ACCEPTED: if GitHub lags the 2300 sweeper past SGT midnight, target 2300 becomes
+    # tomorrow's 23:00, which is > WAIT_CAP_MIN (210) away, so tracker.js aborts loudly and
+    # the run goes red. That is the benign self-protecting abort already seen on run
+    # 33263995304 (29 Aug) — it writes nothing and sends nothing. Expect the occasional red
+    # run here and do NOT "fix" it by raising the cap; the cap is what stops a 22-hour idle.
+    - cron: '52 2 * * *'    # 10:52 SGT -> sweeps 1030 SGT (02:30 UTC)
+    - cron: '7 4 * * *'     # 12:07 SGT -> sweeps 1145 SGT (03:45 UTC)
+    - cron: '22 6 * * *'    # 14:22 SGT -> sweeps 1400 SGT (06:00 UTC)
+    - cron: '22 8 * * *'    # 16:22 SGT -> sweeps 1600 SGT (08:00 UTC)
+    - cron: '7 10 * * *'    # 18:07 SGT -> sweeps 1745 SGT (09:45 UTC)
+    - cron: '22 12 * * *'   # 20:22 SGT -> sweeps 2000 SGT (12:00 UTC)
+    - cron: '52 13 * * *'   # 21:52 SGT -> sweeps 2130 SGT (13:30 UTC)
+    - cron: '22 15 * * *'   # 23:22 SGT -> sweeps 2300 SGT (15:00 UTC)
   workflow_dispatch:
     inputs:
       target:
@@ -106,6 +138,17 @@ jobs:
             "30 9 * * *")  echo "target=2000" >> "$GITHUB_OUTPUT" ;;
             "0 11 * * *")  echo "target=2130" >> "$GITHUB_OUTPUT" ;;
             "30 12 * * *") echo "target=2300" >> "$GITHUB_OUTPUT" ;;
+            # Sweepers (30 Aug 2026) — same targets as the primaries above, fired just AFTER
+            # each slot. A sweeper with no arm here would fall through to the blank manual
+            # input = "nearest slot to now", which is the WRONG rung; that is why these exist.
+            "52 2 * * *")  echo "target=1030" >> "$GITHUB_OUTPUT" ;;
+            "7 4 * * *")   echo "target=1145" >> "$GITHUB_OUTPUT" ;;
+            "22 6 * * *")  echo "target=1400" >> "$GITHUB_OUTPUT" ;;
+            "22 8 * * *")  echo "target=1600" >> "$GITHUB_OUTPUT" ;;
+            "7 10 * * *")  echo "target=1745" >> "$GITHUB_OUTPUT" ;;
+            "22 12 * * *") echo "target=2000" >> "$GITHUB_OUTPUT" ;;
+            "52 13 * * *") echo "target=2130" >> "$GITHUB_OUTPUT" ;;
+            "22 15 * * *") echo "target=2300" >> "$GITHUB_OUTPUT" ;;
             *)             echo "target=${{ github.event.inputs.target }}" >> "$GITHUB_OUTPUT" ;;
           esac
       - name: Run tracker (MLB, then LLV — order matters, see header)
