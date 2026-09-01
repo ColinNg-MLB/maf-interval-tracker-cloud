@@ -1,0 +1,166 @@
+name: MAF26 Interval Tracker (slot relay)
+
+# ============================================================================
+# WHY THIS EXISTS — read before touching it.
+#
+# The sibling workflow (interval-tracker.yml) asks GitHub to be PUNCTUAL: one cron
+# per slot, starting ~2.7h early, idling to the exact minute. That works while
+# GitHub's scheduler is within ~90 min. It stopped being within ~90 min.
+#
+# Measured on ColinNg-MLB (BOTH this public repo and the private `automations`
+# repo, so it is account-wide, not a defect in either workflow):
+#   22-26 Aug 2026  scheduled runs fired  ~20-75 min late   -> everything worked
+#   27 Aug 2026     lag jumps to          ~3.5-10h
+#   28 Aug 2026     lag                   ~8-11.5h
+#   29-31 Aug 2026  lag                   ~2-8h, some crons dropped entirely
+#
+# Nothing in our config changed at that boundary. 20-29 Aug happened to contain no
+# armed round-close days, so the degradation was invisible until it hit Sun 30 Aug
+# (runs dropped) and Mon 31 Aug (runs created 6-8h late -> every evening cron landed
+# after SGT midnight -> target rolled to tomorrow -> WAIT_CAP_MIN abort -> the sheet
+# stopped at 1745 and Colin's phone went quiet after 17:45).
+#
+# THE FIX: stop asking GitHub to be punctual. Ask it only to START ONCE, any time
+# in the morning, and let the RUN walk itself down the ladder.
+#
+# A GitHub JOB is capped at 6 hours, but a workflow RUN made of chained jobs is not.
+# So each job waits for its own start time (capped at 5h so no single job can blow
+# the 6h ceiling) and then fills its share of the rungs:
+#
+#   hop   -> walks the clock to 10:25 SGT
+#   day   -> 1030, 1145, 1400, 1600
+#   eve1  -> 1745, 2000
+#   eve2  -> 2130, 2300
+#
+# Lag tolerance goes from ~50 min to ~14 hours: a 06:40 SGT cron that GitHub does not
+# get round to until 20:00 SGT still fills 2130 and 2300 on time.
+#
+# Every rung is filled with --skip-if-filled, so this is a silent no-op whenever the
+# laptop (primary, exact-minute) or the sibling workflow got there first. It cannot
+# double-write and it cannot double-alert.
+#
+# A job that arrives AFTER its rung fills it "as of now" and says so — honest, late
+# data beats a blank row. That is the sibling workflow's existing behaviour, unchanged.
+#
+# DO NOT add a `concurrency:` group here. These runs deliberately idle for hours; a
+# shared group would make the second cron of the day queue behind the first and wake
+# up at midnight.
+#
+# DO NOT delete interval-tracker.yml. It is still the punctual path when GitHub is
+# healthy, and its --skip-if-filled makes the two harmless to each other.
+# ============================================================================
+
+on:
+  schedule:
+    # Three independent morning starts. GitHub dropped 4 of 16 crons outright on
+    # 30 Aug 2026, so one entry is not enough — but a relay carries the WHOLE day,
+    # so any ONE of these landing is a complete day of coverage.
+    - cron: '40 22 * * *'   # 06:40 SGT
+    - cron: '40 0 * * *'    # 08:40 SGT
+    - cron: '40 2 * * *'    # 10:40 SGT
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Write to the sheet + send Telegram (false = dry-run)'
+        type: boolean
+        default: false
+
+env:
+  TZ: Asia/Singapore
+
+jobs:
+  hop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 310
+    steps:
+      - name: Walk the clock to 10:25 SGT
+        run: |
+          target=$(date -d "today 10:25" +%s)
+          now=$(date +%s)
+          wait=$(( target - now ))
+          if [ "$wait" -le 0 ]; then echo "already past 10:25 SGT — handing straight on"; exit 0; fi
+          # 5h cap: no single job may approach GitHub's 6h ceiling.
+          if [ "$wait" -gt 18000 ]; then wait=18000; fi
+          echo "sleeping ${wait}s to $(date -d "@$(( now + wait ))" '+%H:%M') SGT"
+          sleep "$wait"
+
+  day:
+    needs: hop
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install screenshot deps (render-shot.py)
+        run: python3 -m pip install --quiet pypdfium2 pillow
+      - name: Fill 1030, 1145, 1400, 1600
+        env:
+          MLB_META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          MLB_WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
+          MLB_WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+          LLV_META_ACCESS_TOKEN: ${{ secrets.LLV_META_ACCESS_TOKEN }}
+          LLV_WC_CONSUMER_KEY: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_KEY }}
+          LLV_WC_CONSUMER_SECRET: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          START_AT: '10:25'
+          SLOTS: '1030 1145 1400 1600'
+          APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
+        run: bash .github/run-rungs.sh
+
+  eve1:
+    needs: day
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install screenshot deps (render-shot.py)
+        run: python3 -m pip install --quiet pypdfium2 pillow
+      - name: Fill 1745, 2000
+        env:
+          MLB_META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          MLB_WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
+          MLB_WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+          LLV_META_ACCESS_TOKEN: ${{ secrets.LLV_META_ACCESS_TOKEN }}
+          LLV_WC_CONSUMER_KEY: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_KEY }}
+          LLV_WC_CONSUMER_SECRET: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          START_AT: '17:40'
+          SLOTS: '1745 2000'
+          APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
+        run: bash .github/run-rungs.sh
+
+  eve2:
+    needs: eve1
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install screenshot deps (render-shot.py)
+        run: python3 -m pip install --quiet pypdfium2 pillow
+      - name: Fill 2130, 2300
+        env:
+          MLB_META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          MLB_WC_CONSUMER_KEY: ${{ secrets.WC_CONSUMER_KEY }}
+          MLB_WC_CONSUMER_SECRET: ${{ secrets.WC_CONSUMER_SECRET }}
+          LLV_META_ACCESS_TOKEN: ${{ secrets.LLV_META_ACCESS_TOKEN }}
+          LLV_WC_CONSUMER_KEY: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_KEY }}
+          LLV_WC_CONSUMER_SECRET: ${{ secrets.LLV_WOOCOMMERCE_CONSUMER_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          START_AT: '21:25'
+          SLOTS: '2130 2300'
+          APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
+        run: bash .github/run-rungs.sh

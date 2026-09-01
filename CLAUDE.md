@@ -126,5 +126,54 @@ Colin + Kien + Shannon, switched from Colin's DM same day). If the Telegram secr
 cloud still fills the sheet, it just sends no alert (graceful skip).
 
 ## Teardown (end of MAF26 season)
-Disable/delete this workflow with the other MAF jobs. Or just clear `run-dates.json` — the
-gate makes every run a no-op. Consider archiving the public repo at season end.
+Disable/delete **both** workflows with the other MAF jobs. Or just clear `run-dates.json` —
+the gate makes every run a no-op. Consider archiving the public repo at season end.
+
+---
+
+## `slot-relay.yml` — the second workflow, added 1 Sep 2026
+
+**Read this before "tidying" either workflow. There are now TWO, and they are not duplicates.**
+
+`interval-tracker.yml` asks GitHub to be **punctual** — one cron per rung, starting ~2.7h
+early, idling to the exact minute. That is the right design while GitHub's scheduler is
+within ~90 min. It stopped being within ~90 min.
+
+`slot-relay.yml` asks GitHub only to **start once**, any time in the morning, and then walks
+itself down the ladder. A GitHub *job* is capped at 6h; a *run* made of chained jobs is not.
+So `hop → day → eve1 → eve2` each wait for their own start time (capped at 5h per job) and
+fill their share of the rungs. Lag tolerance goes from ~50 min to **~14 hours**.
+
+### The measurement that forced it (both repos — this is account-wide, not a workflow bug)
+
+| Date (UTC) | Scheduled-run lag on `ColinNg-MLB` |
+|---|---|
+| 22–26 Aug 2026 | ~20–75 min — everything worked, 8/8 rungs daily |
+| 27 Aug 2026 | ~3h30m – 10h |
+| 28 Aug 2026 | ~8h – 11h40m |
+| 29–31 Aug 2026 | ~2h – 8h, several crons dropped outright |
+
+Verified on the **private `automations` repo too** (`shopee-darkhours-watch`, cron 01:37 UTC:
+02:38→02:50 on 22–26 Aug, then 11:58 on 27 Aug and 13:19 on 28 Aug). Nothing in our config
+changed at that boundary. **Do not go looking for a cause in this repo — there isn't one.**
+
+20–29 Aug contained no armed round-close days, so the degradation was invisible until it hit
+Sun 30 Aug (runs dropped) and Mon 31 Aug: every evening cron landed **after SGT midnight**,
+its target rolled to the next day, and `WAIT_CAP_MIN` correctly aborted it. Both brands'
+ladders stopped at 1745 and Colin's phone went quiet after 17:45 on an armed night.
+
+### Rules
+
+- **Do NOT add a `concurrency:` group to `slot-relay.yml`.** Its runs idle for hours on
+  purpose; a shared group makes the second cron of the day queue behind the first and wake
+  up around midnight.
+- **Do NOT delete `interval-tracker.yml`.** It is still the punctual path when GitHub is
+  healthy, and `--skip-if-filled` makes the two harmless to each other — first one to a rung
+  writes and alerts, the rest exit silently.
+- **Do NOT raise `WAIT_CAP_MIN`.** The rung lists in each job are sized so no target is ever
+  more than ~135 min out once the previous rung has fired. The cap is what stops a 22h idle.
+- The rung lists live in `.github/run-rungs.sh` (`SLOTS` env per job). If a ladder TIME
+  changes, update `START_AT`/`SLOTS` here, the sibling workflow's crons and case arms, the
+  laptop's Task Scheduler triggers, and column A of both brands' tabs — all four.
+- A relay job that arrives after its rung fills it **as of now** and says so. Honest late
+  data beats a blank row; that is the sibling's existing behaviour, unchanged.
