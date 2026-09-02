@@ -36,8 +36,17 @@ name: MAF26 Interval Tracker (slot relay)
 # get round to until 20:00 SGT still fills 2130 and 2300 on time.
 #
 # Every rung is filled with --skip-if-filled, so this is a silent no-op whenever the
-# laptop (primary, exact-minute) or the sibling workflow got there first. It cannot
-# double-write and it cannot double-alert.
+# laptop (primary, exact-minute) or the sibling workflow got there first.
+#
+# THAT IS ONLY TRUE WHILE THE RUNNERS ARE SEPARATED IN TIME. This comment used to say
+# the design "cannot double-write and cannot double-alert" and it was WRONG. The three
+# crons below are independent, so two of them can be alive at once, and each run walks
+# the WHOLE ladder — on Tue 1 Sep 2026 a 09:52 dispatch and a 15:57 schedule both filled
+# and both alerted on 1745/2000/2130/2300 for both brands, because --skip-if-filled reads
+# the row before it writes and the two sends were 0.8-2.6s apart. Fixed by .github/
+# relay-rank.sh: the oldest live relay run owns the exact minute, later ones arrive
+# RELAY_LAG_SEC behind and no-op. It fails OPEN (rank 0 = send) on purpose — read it
+# before changing anything here.
 #
 # A job that arrives AFTER its rung fills it "as of now" and says so — honest, late
 # data beats a blank row. That is the sibling workflow's existing behaviour, unchanged.
@@ -67,6 +76,12 @@ on:
 
 env:
   TZ: Asia/Singapore
+
+# actions:read lets relay-rank.sh see whether an older relay run is still walking this
+# ladder (the 1 Sep 2026 duplicate-alert fix). contents:read is what checkout needs.
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   hop:
@@ -106,6 +121,10 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # relay-rank.sh needs this to ask which relay runs are still in flight.
+          # Without it the rank check fails OPEN (rank 0) and we are back to the
+          # 1 Sep 2026 duplicate behaviour — not to silence.
+          GITHUB_TOKEN: ${{ github.token }}
           START_AT: '10:25'
           SLOTS: '1030 1145 1400 1600'
           APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
@@ -133,6 +152,10 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # relay-rank.sh needs this to ask which relay runs are still in flight.
+          # Without it the rank check fails OPEN (rank 0) and we are back to the
+          # 1 Sep 2026 duplicate behaviour — not to silence.
+          GITHUB_TOKEN: ${{ github.token }}
           START_AT: '17:40'
           SLOTS: '1745 2000'
           APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
@@ -160,6 +183,10 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # relay-rank.sh needs this to ask which relay runs are still in flight.
+          # Without it the rank check fails OPEN (rank 0) and we are back to the
+          # 1 Sep 2026 duplicate behaviour — not to silence.
+          GITHUB_TOKEN: ${{ github.token }}
           START_AT: '21:25'
           SLOTS: '2130 2300'
           APPLY: ${{ github.event_name == 'schedule' || github.event.inputs.apply == 'true' }}
