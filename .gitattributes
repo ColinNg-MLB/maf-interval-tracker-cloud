@@ -1,0 +1,5 @@
+# The workflows run these on ubuntu-latest, where a CRLF shebang line makes bash
+# fail with a confusing "bad interpreter" / "\r: command not found". This workspace
+# is mixed line endings (and interval-tracker.yml is already CRLF), so pin the shell
+# scripts to LF in the repo no matter which laptop commits them.
+*.sh text eol=lf
