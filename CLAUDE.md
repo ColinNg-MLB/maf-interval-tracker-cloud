@@ -166,10 +166,60 @@ ladders stopped at 1745 and Colin's phone went quiet after 17:45 on an armed nig
 
 - **Do NOT add a `concurrency:` group to `slot-relay.yml`.** Its runs idle for hours on
   purpose; a shared group makes the second cron of the day queue behind the first and wake
-  up around midnight.
+  up around midnight. (The duplicate problem it looks like a fix for is solved by
+  `relay-rank.sh` instead — see below.)
 - **Do NOT delete `interval-tracker.yml`.** It is still the punctual path when GitHub is
-  healthy, and `--skip-if-filled` makes the two harmless to each other — first one to a rung
-  writes and alerts, the rest exit silently.
+  healthy, and `--skip-if-filled` keeps the two from colliding **as long as they arrive at a
+  rung at different times** — which they do, since its crons are minutes apart from the
+  relay's rung minutes.
+
+### ⚠ TWO RELAY RUNS AT ONCE DOUBLE-ALERTED — the 1 Sep 2026 incident (`relay-rank.sh`)
+
+**This section replaces a claim that used to sit in this file and in the workflow header:
+that the design "cannot double-write and cannot double-alert". It was false.**
+
+The three morning crons are *independent*, and each relay run walks the **whole** ladder.
+Nothing stopped two runs being alive together — and on Tue 1 Sep 2026 (LLV R5 close day)
+two were:
+
+| Run | Event | Created | eve1 | eve2 |
+|---|---|---|---|---|
+| 33460418347 | `workflow_dispatch` | 09:52 SGT | 16:01–20:01 | — |
+| 33484655044 | `schedule` | 15:57 SGT | 16:01–20:01 | 20:01–23:01 |
+
+Both filled and both sent Telegram for **both brands** at rungs 1745, 2000, 2130 and 2300.
+Colin got two identical messages per rung **from 17:46**, not from 20:00 as first reported.
+
+**Why `--skip-if-filled` cannot catch this:** it reads the row, *then* writes. Two runs on
+the same rung in the same second both read "not filled" and both alert. The paired sends
+landed **0.8–2.6s** apart. Separation in TIME is the entire safety property — which is why
+`interval-tracker.yml`'s six runs that day all skipped correctly (they were minutes apart),
+so there were exactly 2 messages per rung, never 3. Side effect worth knowing: the extra
+parallel Meta pulls pushed LLV's laptop run into `Application request limit reached` at 1745.
+
+**The fix — `.github/relay-rank.sh`, called once per rung by `run-rungs.sh`.** It asks the
+Actions API which relay runs are still in flight today. The **oldest live run owns the
+ladder** and keeps the exact minute; a later one waits `RELAY_LAG_SEC` (default 150s) past
+the rung, by which time the owner's fill is on the sheet and `--skip-if-filled` makes it a
+silent no-op. Same shape as the sibling's sweeper crons firing *past* their slot.
+- **Re-asked per rung, not once per job** — so if the owner dies mid-evening, the next run's
+  rank drops to 0 and it takes over the *remaining* rungs at full speed.
+- **When both runs are already past a rung** (heavy GitHub lag), the standoff is measured
+  from *now* instead of from the slot, or two late runs would collide all over again.
+- **⚠ IT FAILS OPEN AND MUST STAY THAT WAY.** No token, no network, bad JSON, an unknown run
+  state — all yield rank 0, i.e. *send*. A duplicate alert is an annoyance Colin reads past;
+  a silent round-close night is the failure this repo keeps suffering (10 Aug 2026 lost day,
+  31 Aug 2026 quiet phone). **Ranking is an optimisation on top of delivery, never a gate in
+  front of it.** Do not "harden" it into a lock.
+- Needs `permissions: actions: read` + `GITHUB_TOKEN: ${{ github.token }}` on each rung step.
+  Remove either and it degrades to the old duplicate behaviour — not to silence.
+- **Tests: `bash .github/relay-rank.test.sh`** (read-only, no network, ~2s). 15 cases driven
+  through the real script via its `RELAY_RANK_FIXTURE` seam, including the actual 1 Sep run
+  ids and every degenerate input. Run it after touching either script.
+- **A run already in flight keeps the code it started with** (`headSha` is pinned at run
+  creation, and `actions/checkout` takes that SHA). So a fix pushed mid-day does not reach
+  today's existing run — it reaches the *next* one, which is the one that needs to stand
+  back anyway. Check `gh run view <id> --json headSha` before concluding a deploy is live.
 - **Do NOT raise `WAIT_CAP_MIN`.** The rung lists in each job are sized so no target is ever
   more than ~135 min out once the previous rung has fired. The cap is what stops a 22h idle.
 - The rung lists live in `.github/run-rungs.sh` (`SLOTS` env per job). If a ladder TIME
