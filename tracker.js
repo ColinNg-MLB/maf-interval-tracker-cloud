@@ -611,6 +611,34 @@ const main = async () => {
   if (forced) {
     slot = colA.find((x) => Number(x.raw) === Number(forced));
     if (!slot) throw new Error(`--slot=${forced} not found in column A (${colA.map((x) => x.raw).join(', ')})`);
+    // ---- a FORCED rung far in the PAST must not be written (added 21 Sep 2026) ----
+    // The auto path refuses a slot more than ±SLOT_TOLERANCE_MIN from now, because a fill
+    // stamped 10:30 that actually read Meta at 13:23 is not that rung — Meta spend cannot be
+    // read retroactively at an exact minute, so a late rung is UNRECOVERABLE, and writing
+    // current figures into it is strictly worse than leaving it blank. `--target=` (the cloud
+    // relay/sweeper path) resolved through this same `forced` branch and so skipped that check
+    // entirely. It survived on ordinary days only because the laptop had already filled the
+    // rung and --skip-if-filled returned before any write.
+    //
+    // ⚠ THE SEVERE CASE IS THE FIRST RUNG, AND IT WIPES THE DAY. `isFirstSlot` is computed
+    // from the resolved ROW, so a late `--target=1030` against an EMPTY row 2 sets
+    // needsDayClear, clears I2:K16 — every rung already filled today — and writes one row of
+    // mid-afternoon figures under a "10:30am" header. Found 21 Sep 2026 on LLV's close day:
+    // the ladder was armed at 11:28 so the 10:30 rung was legitimately empty, and slot-relay
+    // fires three runs a day (~08:25, ~13:20, ~15:50 SGT), each walking 1030/1145/1400/1600.
+    // Two of them would have cleared the close-day ladder hours apart.
+    //
+    // Refusing loses nothing: a rung this far past cannot be filled honestly by anyone.
+    // Dry runs are unaffected, and `--allow-late` is the deliberate-backfill escape hatch.
+    const lateBy = nowMin - hhmmToMin(slot.raw);
+    if (APPLY && lateBy > SLOT_TOLERANCE_MIN && !args.includes('--allow-late')) {
+      throw new Error(
+        `slot ${slot.raw} is ${lateBy} min in the past (now ${String(Math.floor(nowMin / 60)).padStart(2, '0')}`
+        + `${String(nowMin % 60).padStart(2, '0')} SGT) — refusing to write it. Meta spend cannot be read `
+        + `retroactively, so this rung would record current figures under an earlier time`
+        + `${slot.row === colA[0].row ? ', AND it is the first rung, so it would clear every rung already filled today' : ''}`
+        + `. Leave it blank; the alert reports it as missed. (--allow-late to override.)`);
+    }
   } else {
     const scored = colA.map((x) => ({ ...x, diff: Math.abs(hhmmToMin(x.raw) - nowMin) })).sort((a, b) => a.diff - b.diff);
     slot = scored[0];
