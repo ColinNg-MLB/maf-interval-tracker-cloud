@@ -1,4 +1,5 @@
 {
-  "MLB": ["2026-08-03", "2026-08-04", "2026-08-05"],
-  "LLV": ["2026-08-02", "2026-08-03", "2026-08-04"]
+  "_why": "MAF26 END-OF-SEASON ad-hoc arming, added Mon 21 Sep 2026. round-schedule.json carries the PRICE-round closes (both brands 2026-09-25), but Colin's real last selling days are LLV Mon 21 Sep and MLB Tue 22 Sep. That file must NOT be edited mid-season (campaign-expiry-watch / roundclose-outage-watch / closeday-belts all arm off it), so the real close days are armed here instead - this file unions with the schedule. MLB carries 21 + 22 Sep because Colin's standing rule is the last 3 days of a round and 20 Sep is already past.",
+  "MLB": ["2026-09-21", "2026-09-22"],
+  "LLV": ["2026-09-21"]
 }
