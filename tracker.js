@@ -630,14 +630,23 @@ const main = async () => {
     //
     // Refusing loses nothing: a rung this far past cannot be filled honestly by anyone.
     // Dry runs are unaffected, and `--allow-late` is the deliberate-backfill escape hatch.
+    // Exits 0, like --skip-if-filled: a rung too late to fill honestly is a legitimate NO-OP,
+    // not a failure. Throwing here would turn every relay run red for the rest of the day
+    // (run-rungs.sh rolls any non-zero rung up into the job's exit), and this repo already has
+    // an open row about benign red emails training Colin to ignore the real ones.
     const lateBy = nowMin - hhmmToMin(slot.raw);
     if (APPLY && lateBy > SLOT_TOLERANCE_MIN && !args.includes('--allow-late')) {
-      throw new Error(
-        `slot ${slot.raw} is ${lateBy} min in the past (now ${String(Math.floor(nowMin / 60)).padStart(2, '0')}`
-        + `${String(nowMin % 60).padStart(2, '0')} SGT) — refusing to write it. Meta spend cannot be read `
-        + `retroactively, so this rung would record current figures under an earlier time`
-        + `${slot.row === colA[0].row ? ', AND it is the first rung, so it would clear every rung already filled today' : ''}`
-        + `. Leave it blank; the alert reports it as missed. (--allow-late to override.)`);
+      console.log(`[${BRAND}] slot ${slot.raw} is ${lateBy} min in the past `
+        + `(now ${String(Math.floor(nowMin / 60)).padStart(2, '0')}${String(nowMin % 60).padStart(2, '0')} SGT)`
+        + ` — SKIPPING, not writing it.`);
+      console.log(`  Meta spend cannot be read retroactively at an exact minute, so this rung would`
+        + ` record current figures under an earlier time.`);
+      if (slot.row === colA[0].row) {
+        console.log(`  It is also the FIRST rung, so writing it would clear I2:K16 — every rung`
+          + ` already filled today.`);
+      }
+      console.log(`  Leaving it blank; the alert reports it as missed. (--allow-late to override.)`);
+      return;
     }
   } else {
     const scored = colA.map((x) => ({ ...x, diff: Math.abs(hhmmToMin(x.raw) - nowMin) })).sort((a, b) => a.diff - b.diff);
