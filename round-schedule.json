@@ -3,7 +3,8 @@
   "_source_MLB": "'2026 of MLB Q3 Planning' (Drive 1e_Z-UhwJklr88xUP4ZpmpXdWqwLwhDBo), 'Finance' tab rows 19-40. Read 3 Aug 2026; 'CN Finance' tab agrees.",
   "_source_LLV": "'La Levain Q3 2026x' (1_zMcwuU9vOkjYOWB5GdfQNdq6myoWbPWw4bLe9uLGF0), 'Finance' tab (gid 0) rows 5-11. Read 3 Aug 2026.",
   "_warning_LLV": "The 'CN Finance' tab (gid 963845414) of the SAME LLV workbook still says R5 ends 2 Sep / R6 starts 3 Sep. It is STALE - Colin revised R5 to 1 Sep on 28 Jul 2026 and the 'Finance' tab carries the correction. Trust 'Finance'. Flagged to Colin, not ours to edit.",
-  "_note_MLB_R8": "MLB R8 has no stated end date in the Finance tab (row 40 reads 'R8 17th Sep' only). CONFIRMED BY COLIN 3 Aug 2026: keep 2026-09-25 (Mid-Autumn Festival) below as R8's assumed last day, so the final run-in to the festival IS armed. It is an assumption standing in for a missing sheet value, not a price step-up date - do not quote it as one in customer-facing copy.",
+  "_note_MLB_R8": "MLB R8 had no stated end date in the Finance tab (row 40 reads 'R8 17th Sep' only). Colin confirmed 3 Aug 2026 to hold 2026-09-25 (Mid-Autumn Festival) as an assumed last day. CORRECTED AT TEARDOWN, Mon 28 Sep 2026: R8 now reads 2026-09-22 (Tue), MLB's real last online selling day. Ads on both brands ended Tue 22 Sep and customers could no longer order online after that; the booth carried the rest. The 25 Sep value was the festival date, never a price step or an online close.",
+  "_warning_order_cutoff": "⛔ A CLOSE DATE IS NOT THE LAST SELLING DAY, AND THIS FILE DOES NOT CARRY THE SELLING CALENDAR. Colin fixed the MAF26 ONLINE ORDER CUT-OFF at 4 days before the festival = Mon 21 Sep 2026, for BOTH brands (tracker row 'MAF26 season pace vs last year + booth window - spend decision (MLB + LLV)', which restated MLB's remaining-season baseline to a 33-day window on that basis). But the closes below run to 2026-09-25 on both brands. So reading a final close date out of this file and treating it as the end of the season overstates the run-in by 4 days. 11 Sep 2026: a session did exactly that - told Colin to extend MLB's Meta campaigns to 25 Sep and wrote 25 Sep into a calendar event, when there are only 5 online selling days after the 16 Sep close (Wed 17 - Mon 21 Sep). SETTLED BY COLIN 17 Sep 2026, verbatim: 'the last deadline would be 21 sep'. So the 2026-09-25 closes below are STALE against the real selling calendar and are NOT a price-ladder step anyone can act on online. DO NOT RE-RAISE THIS AS AN OPEN QUESTION. STILL DO NOT EDIT THE DATES MID-SEASON - the automations arming off them (campaign-expiry-watch, roundclose-outage-watch, closeday-belts, maf-interval-tracker) would all shift with 4 days left. Correct them at MAF26 TEARDOWN, and at MAF27 setup make the final close land ON the order cut-off rather than after it. LIVE CONSEQUENCE STILL OPEN at the time of writing: LLV 'MAF26 on_Purchase_260708' is ACTIVE to 25 Sep against a $400/day cap, i.e. up to ~$1,600 of spend on 22-25 Sep pointing at a website that cannot take the order; MLB's purchase campaigns stop 22 Sep and are immaterial. Full reasoning: tracker row 'MAF26 cross-brand trajectory divergence'. === RESOLVED AT TEARDOWN, Mon 28 Sep 2026: the final closes now carry the REAL commercial closes, LLV R7 = 2026-09-21 (Mon) and MLB R8 = 2026-09-22 (Tue), replacing 2026-09-25 on both. Edited only after every consumer (campaign-expiry-watch, roundclose-outage-watch, closeday-benchmark-refresh, both interval-tracker cloud workflows, the laptop task) was confirmed disabled with no run in flight, so the change armed nothing. The warning above is kept as the history of why. AT MAF27 SETUP: make the final close land ON the online order cut-off, not on the festival date.",
   "armDaysBeforeClose": 2,
   "closes": {
     "MLB": {
@@ -14,7 +15,7 @@
       "R5": "2026-08-19",
       "R6": "2026-09-02",
       "R7": "2026-09-16",
-      "R8": "2026-09-25"
+      "R8": "2026-09-22"
     },
     "LLV": {
       "R1": "2026-07-28",
@@ -23,7 +24,7 @@
       "R4": "2026-08-18",
       "R5": "2026-09-01",
       "R6": "2026-09-09",
-      "R7": "2026-09-25"
+      "R7": "2026-09-21"
     }
   }
 }
