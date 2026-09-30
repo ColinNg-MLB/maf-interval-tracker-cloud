@@ -4,6 +4,14 @@ Backup runner for `shared/maf-interval-tracker/`. The **laptop** (Windows Task S
 is primary and punctual; this covers slots the laptop misses.
 Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 
+> **CURRENT STATE (Wed 30 Sep 2026): both workflows RE-ENABLED for MLB Deepavali 2026.** Both
+> `interval-tracker.yml` and `.github/run-rungs.sh` (used by `slot-relay.yml`) now run
+> `SEASON=DEEP26 BRAND=MLB` FIRST, then the two MAF26 brands, which are inert. DEEP26 reads its round
+> ends LIVE from the Deepavali sheet's `discount` tab — nothing in `round-schedule.json` to keep in
+> step for it. Armed R1 4–6 Oct … R5 2–4 Nov. Proven by dry dispatch 36682640536. Teardown after
+> Wed 4 Nov: disable both workflows, THEN cancel any in-flight relay run. Laptop master:
+> `shared/maf-interval-tracker/CLAUDE.md` (its CURRENT STATE block).
+
 **Covers ALL 8 slots since 9 Aug 2026** (commit b24c87a). It was evenings-only
 (2000/2130/2300) on the assumption that the laptop was awake through the working day —
 wrong. A laptop that is merely ASLEEP loses its triggers exactly like one that is off:
