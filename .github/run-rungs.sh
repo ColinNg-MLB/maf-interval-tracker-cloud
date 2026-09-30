@@ -75,19 +75,23 @@ for slot in $SLOTS; do
     [ "$w" -gt 0 ] && sleep "$w"
   fi
 
-  for brand in MLB LLV; do
+  # SEASON/BRAND pairs, in send order. DEEP26/MLB (MLB Deepavali 2026, added Wed 30 Sep 2026)
+  # runs FIRST: the two MAF26 entries are inert since that season ended (no armed days left),
+  # so they exit in a second and cannot delay it. A season's credentials are its brand's.
+  for pair in DEEP26/MLB MAF26/MLB MAF26/LLV; do
+    season="${pair%/*}"; brand="${pair#*/}"
     key_meta="${brand}_META_ACCESS_TOKEN"
     key_ck="${brand}_WC_CONSUMER_KEY"
     key_cs="${brand}_WC_CONSUMER_SECRET"
-    echo "::group::$brand $slot"
-    BRAND="$brand" \
+    echo "::group::$season $brand $slot"
+    SEASON="$season" BRAND="$brand" \
       META_ACCESS_TOKEN="${!key_meta}" \
       WC_CONSUMER_KEY="${!key_ck}" \
       WC_CONSUMER_SECRET="${!key_cs}" \
       node tracker.js $ARGS --target="$slot"
     rc=$?
     echo "::endgroup::"
-    echo "$brand $slot exit=$rc"
+    echo "$season $brand $slot exit=$rc"
     [ $rc -ne 0 ] && rc_total=1
   done
 done

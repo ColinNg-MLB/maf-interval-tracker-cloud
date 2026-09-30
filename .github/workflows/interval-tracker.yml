@@ -166,6 +166,19 @@ jobs:
           set +e
           rc_total=0
 
+          # MLB Deepavali 2026 (SEASON=DEEP26), added Wed 30 Sep 2026. Runs first: the MAF26 runs
+          # below are inert since that season ended. Same MLB credentials.
+          echo "::group::DEEP26 MLB"
+          SEASON=DEEP26 BRAND=MLB \
+            META_ACCESS_TOKEN="$MLB_META_ACCESS_TOKEN" \
+            WC_CONSUMER_KEY="$MLB_WC_CONSUMER_KEY" \
+            WC_CONSUMER_SECRET="$MLB_WC_CONSUMER_SECRET" \
+            node tracker.js $ARGS
+          rc_deep=$?
+          echo "::endgroup::"
+          echo "DEEP26 MLB exit=$rc_deep"
+          [ $rc_deep -ne 0 ] && rc_total=1
+
           echo "::group::MLB"
           BRAND=MLB \
             META_ACCESS_TOKEN="$MLB_META_ACCESS_TOKEN" \
@@ -188,5 +201,5 @@ jobs:
           echo "LLV exit=$rc_llv"
           [ $rc_llv -ne 0 ] && rc_total=1
 
-          echo "--- summary: MLB=$rc_mlb LLV=$rc_llv ---"
+          echo "--- summary: DEEP26 MLB=$rc_deep MLB=$rc_mlb LLV=$rc_llv ---"
           exit $rc_total

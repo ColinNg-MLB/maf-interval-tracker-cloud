@@ -55,13 +55,33 @@ const BRANDS = {
   MLB: { sheetId: '1bGCYAnn2Cqtl10xIe6YKsseFYuhEbeIp8Cq3PHzBjG8', tab: 'moving average', gid: 1787608602, act: '521387868326577', store: 'https://mdmlingbakery.com' },
   LLV: { sheetId: '1Q5meBGm7jbw4abgzixEJBy9VvdBY7CnfOzYWqyTqquo', tab: 'daily moving average', gid: 163728980, act: '3055222664753411', store: 'https://www.lalevain.com' },
 };
+// ---- SEASON (default MAF26 = unchanged) ----
+// DEEP26 = MLB Deepavali 2026 (Colin, Wed 30 Sep 2026: "close night round tracker, first one will
+// kick in on 6 oct"; asked the same day: last 3 days of each round like MAF26, laptop + cloud, same
+// Telegram group). Its round ends are read LIVE from the Deepavali sheet's "discount" tab, NOT from
+// round-schedule.json: that file keys closes by BRAND, and campaign-expiry-watch, roundclose-outage-
+// watch and closeday-belts all read "MLB" out of it as MAF26 dates — Deepavali closes filed there
+// would be treated as mid-autumn closes by three other robots.
+const SEASON = (process.env.SEASON || 'MAF26').toUpperCase();
+const SEASONS = {
+  MAF26: BRANDS,
+  DEEP26: {
+    MLB: {
+      sheetId: '15zlWxPVVtAsJ4Ryz-7zFebVCGsxJULH8IPxF1hMsKn4', tab: 'moving average', gid: 105392650,
+      act: '521387868326577', store: 'https://mdmlingbakery.com',
+      campaignMatch: 'DEEP26', closesFrom: { tab: 'discount', year: 2026 }, armDaysBeforeClose: 2,
+      runDatesKey: 'MLB_DEEP26',
+    },
+  },
+};
 const BRAND = (process.env.BRAND || '').toUpperCase();
-const CFG = BRANDS[BRAND];
-if (!CFG) { console.error(`FATAL: set BRAND to one of: ${Object.keys(BRANDS).join(', ')} (got "${process.env.BRAND || ''}")`); process.exit(1); }
+const CFG = (SEASONS[SEASON] || {})[BRAND];
+if (!CFG) { console.error(`FATAL: season ${SEASON} has no config for BRAND "${process.env.BRAND || ''}" (seasons: ${Object.keys(SEASONS).join(', ')})`); process.exit(1); }
+const SEASON_LABEL = CFG.campaignMatch || 'MAF26';   // message titles: "MLB DEEP26 — 10:30am check"
 if (process.env.TAB_OVERRIDE) CFG.tab = process.env.TAB_OVERRIDE; // testing only — point at a copy of the tab
 if (process.env.GID_OVERRIDE) CFG.gid = Number(process.env.GID_OVERRIDE); // pair with TAB_OVERRIDE — screenshots address the tab by gid
 
-const CAMPAIGN_MATCH = process.env.CAMPAIGN_MATCH || 'MAF26';
+const CAMPAIGN_MATCH = process.env.CAMPAIGN_MATCH || CFG.campaignMatch || 'MAF26';
 const PAID_STATUSES = 'completed,processing';
 const SGT_OFFSET_H = 8;
 const GRAPH_VER = 'v21.0';
@@ -391,6 +411,35 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
 // hand-edited per round and got forgotten, so LLV's whole 2 Aug and both brands' 3 Aug 1030
 // slot silently no-opped two days before a close. Returns [] on any problem; the caller
 // falls back to run-dates.json so a bad schedule file can never block a manually armed day.
+// A season with closesFrom (DEEP26) reads its round ends from its own budget sheet's round table
+// (col "round" = R1.., col "end" = "6 Oct Tue"), live, every run. A row that will not parse THROWS,
+// so the caller's "unreadable" branch runs — never a silently shorter list of closes.
+const MON3 = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+async function sheetArmDates() {
+  const { tab, year } = CFG.closesFrom;
+  const token = await googleToken();
+  const { status, json, text } = await jget(`https://sheets.googleapis.com/v4/spreadsheets/${CFG.sheetId}/values/${encodeURIComponent(`'${tab}'!A1:D30`)}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (status !== 200) throw new Error(`"${tab}" tab read ${status}: ${String(text).slice(0, 150)}`);
+  const rows = json.values || [];
+  const h = (rows[0] || []).map((x) => String(x).trim().toLowerCase());
+  const ri = h.indexOf('round'), ei = h.indexOf('end');
+  if (ri < 0 || ei < 0) throw new Error(`"${tab}" row 1 has no "round"/"end" headers`);
+  const back = Number.isFinite(Number(CFG.armDaysBeforeClose)) ? Number(CFG.armDaysBeforeClose) : 2;
+  const out = [];
+  for (const row of rows.slice(1)) {
+    const round = String(row[ri] || '').trim().toUpperCase(); if (!/^R\d+$/.test(round)) continue;
+    const m = String(row[ei] || '').trim().match(/^(\d{1,2})\s+([A-Za-z]{3})/);
+    if (!m || MON3[m[2].toLowerCase()] === undefined) throw new Error(`"${tab}" ${round}: cannot read end date "${row[ei]}"`);
+    const close = new Date(Date.UTC(year, MON3[m[2].toLowerCase()], +m[1])).toISOString().slice(0, 10);
+    for (let d = back; d >= 0; d--) {
+      const dt = new Date(close + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - d);
+      out.push({ date: dt.toISOString().slice(0, 10), round, close });
+    }
+  }
+  if (!out.length) throw new Error(`"${tab}" has no R1.. rows`);
+  return out;
+}
+
 function scheduledArmDates(brand) {
   const p = path.join(__dirname, 'round-schedule.json');
   if (!fs.existsSync(p)) return [];
@@ -478,13 +527,13 @@ const main = async () => {
   // ({"MLB":[...],"LLV":[...]}) — a legacy flat array still applies to every brand.
   const runDatesPath = path.join(__dirname, 'run-dates.json');
   const rdRaw = fs.existsSync(runDatesPath) ? JSON.parse(fs.readFileSync(runDatesPath, 'utf8')) : [];
-  const runDates = Array.isArray(rdRaw) ? rdRaw : (rdRaw[BRAND] || []);
+  const runDates = Array.isArray(rdRaw) ? rdRaw : (rdRaw[CFG.runDatesKey || BRAND] || []);
   const today = todaySGT();
   let schedArmed = [];
   try {
-    schedArmed = scheduledArmDates(BRAND);
+    schedArmed = CFG.closesFrom ? await sheetArmDates() : scheduledArmDates(BRAND);
   } catch (e) {
-    console.log(`[${BRAND}] !! round-schedule.json unreadable (${e.message}) — using run-dates.json only`);
+    console.log(`[${BRAND} ${SEASON}] !! ${CFG.closesFrom ? `"${CFG.closesFrom.tab}" tab` : 'round-schedule.json'} unreadable (${e.message}) — using run-dates.json only`);
   }
   const schedHit = schedArmed.find((x) => x.date === today);
   const manualHit = runDates.includes(today);
@@ -532,7 +581,7 @@ const main = async () => {
       console.log('!! DECISION BLOCK BROKEN — spot check will carry a warning:');
       for (const p of spotProblems) console.log(`   - ${p}`);
     }
-    const lines = [`<b>${BRAND} MAF26 — spot check ${slotLabel(nn.getUTCHours() * 100 + nn.getUTCMinutes())}</b>`];
+    const lines = [`<b>${BRAND} ${SEASON_LABEL} — spot check ${slotLabel(nn.getUTCHours() * 100 + nn.getUTCMinutes())}</b>`];
     lines.push(...decisionWarningLines(spotProblems, esc));
     lines.push('');
     lines.push('<b>Overall</b>');
@@ -678,7 +727,7 @@ const main = async () => {
 
   // ---- pull all three sources ----
   const [meta, budgets, wc] = await Promise.all([metaSpendToday(), metaBudgets(), wcToday()]);
-  console.log(`  Meta MAF26 spend today: $${meta.spend.toFixed(2)}  (${meta.names.join(', ') || 'no campaigns'})`);
+  console.log(`  Meta ${CAMPAIGN_MATCH} spend today: $${meta.spend.toFixed(2)}  (${meta.names.join(', ') || 'no campaigns'})`);
   console.log(`  Budgets: total $${budgets.total.toFixed(0)}, purchase $${budgets.purchase.toFixed(0)}  (${budgets.lines.join(' | ')})`);
   console.log(`  WooCommerce today: $${wc.sales.toFixed(2)} across ${wc.orders} paid orders`);
 
@@ -762,7 +811,7 @@ const main = async () => {
   }
 
   const lines = [];
-  lines.push(`<b>${BRAND} MAF26 — ${slotLabel(slot.raw)} check</b> (${today})`);
+  lines.push(`<b>${BRAND} ${SEASON_LABEL} — ${slotLabel(slot.raw)} check</b> (${today})`);
   lines.push(...decisionWarningLines(dProblems, esc));
   lines.push('');
   lines.push('<b>Overall</b>');
