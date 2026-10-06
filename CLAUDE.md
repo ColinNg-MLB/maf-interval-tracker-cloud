@@ -11,6 +11,8 @@ Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 > step for it. Armed R1 4–6 Oct … R5 2–4 Nov. Proven by dry dispatch 36682640536. Teardown after
 > Wed 4 Nov: disable both workflows, THEN cancel any in-flight relay run. Laptop master:
 > `shared/maf-interval-tracker/CLAUDE.md` (its CURRENT STATE block).
+> **Display names changed Tue 6 Oct 2026** to "Deepavali Close-Night Tracker (cloud backup)" /
+> "(slot relay)" so GitHub emails don't read as MAF. Use FILE names in `gh` commands; rename per season.
 
 **Covers ALL 8 slots since 9 Aug 2026** (commit b24c87a). It was evenings-only
 (2000/2130/2300) on the assumption that the laptop was awake through the working day —
