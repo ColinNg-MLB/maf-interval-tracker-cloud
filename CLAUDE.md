@@ -4,6 +4,15 @@ Backup runner for `shared/maf-interval-tracker/`. The **laptop** (Windows Task S
 is primary and punctual; this covers slots the laptop misses.
 Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 
+> **⛔ MOVED + NOW PRIVATE (Thu 5 Nov 2026).** Transferred to the company org: **`mdmlingbakery/maf-interval-tracker-cloud`**
+> (old address redirects). Its only org admin is **Derek Chua of Magnified, the website agency**; Colin has WRITE only, so
+> he cannot edit secrets or visibility. Within ~1h of the move it was switched to **PRIVATE** (not by us). Private = its
+> runs bill the org's 2,000 free Actions min/month, and **slot-relay runs measured 316–741 min EACH (4–5 Nov)** — enough
+> to exhaust the cap in days and block every org workflow, `automations` included. Colin's call 5 Nov: leave the jobs ON
+> and the keys IN, because it is to be **reactivated for MLB CNY27 (R1 closes Wed 25 Nov)**. Before then it must be made
+> PUBLIC again (needs Derek). Tracker row: "mdmlingbakery GitHub: MLB owners + make close-night tracker public again".
+> The Tue 10 Nov teardown below is superseded by that decision.
+
 > **CURRENT STATE (Wed 30 Sep 2026): both workflows RE-ENABLED for MLB Deepavali 2026.** Both
 > `interval-tracker.yml` and `.github/run-rungs.sh` (used by `slot-relay.yml`) now run
 > `SEASON=DEEP26 BRAND=MLB` FIRST, then the two MAF26 brands, which are inert. DEEP26 reads its round
