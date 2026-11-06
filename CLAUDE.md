@@ -74,7 +74,8 @@ so only a real scheduled fire exercises them; verify the mapping statically inst
   guard exists so a wildly-early cron never idles for hours. It also means a careless test
   dispatch leaves a failure in the run history that looks like a real outage.
   **Run `31454984084` (11 Aug 2026, 03:18 UTC, red) is exactly that — a mis-targeted manual
-  test, not a fault.** Before diagnosing any red run here, check its `event`: a
+  test, not a fault.** **So is `42157824498` (ColinNg-MLB copy, Fri 6 Nov 2026)** — the deliberate post-move check
+  that the repo now reads PUBLIC (`repo private: false`, no idle budget). Before diagnosing any red run here, check its `event`: a
   `workflow_dispatch` failure is usually someone testing.
 - **A dispatch still cannot exercise the cron→target arms** (empty `github.event.schedule`);
   only a real scheduled fire does. Verify that mapping statically.
