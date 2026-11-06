@@ -13,7 +13,15 @@ Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 > PUBLIC again (needs Derek). Tracker row: "mdmlingbakery GitHub: MLB owners + make close-night tracker public again".
 > The Tue 10 Nov teardown below is superseded by that decision.
 
-> **CURRENT STATE (Wed 30 Sep 2026): both workflows RE-ENABLED for MLB Deepavali 2026.** Both
+> **CNY27 WIRED (Fri 6 Nov 2026).** `interval-tracker.yml` (renamed "CNY27 Close-Night Tracker (cloud backup)") and
+> `run-rungs.sh` run `SEASON=CNY27 BRAND=MLB` FIRST — the CNY27 sheet's `moving average` tab (gid 198369866), round
+> ends live from its `27 discount` tab (Jan/Feb roll to 2027), first armed day Mon 23 Nov. The laptop task is NOT part
+> of CNY27 (Colin leaves ~20 Nov) — this repo is the ONLY runner. **While the repo is PRIVATE an "Idle budget" step
+> sets IDLE_BUDGET_MIN=5 and tracker.js refuses the ~2.5h waits** (they would bill the org's Actions minutes, shared
+> with `automations`), so the punctual rungs DO NOT FILL until Derek (Magnified, org admin) makes the repo public
+> again. `slot-relay.yml` stays DISABLED while private — it idles in shell sleeps the budget cannot see.
+
+> **(history) Wed 30 Sep 2026: both workflows RE-ENABLED for MLB Deepavali 2026.** Both
 > `interval-tracker.yml` and `.github/run-rungs.sh` (used by `slot-relay.yml`) now run
 > `SEASON=DEEP26 BRAND=MLB` FIRST, then the two MAF26 brands, which are inert. DEEP26 reads its round
 > ends LIVE from the Deepavali sheet's `discount` tab — nothing in `round-schedule.json` to keep in

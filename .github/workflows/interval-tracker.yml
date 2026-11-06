@@ -1,4 +1,4 @@
-name: Deepavali Close-Night Tracker (cloud backup)
+name: CNY27 Close-Night Tracker (cloud backup)
 
 # Public-repo backup for shared/maf-interval-tracker. The LAPTOP (Windows Task Scheduler)
 # is primary; this fills any slot the laptop misses.
@@ -119,6 +119,17 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
+      # Fri 6 Nov 2026: this repo is PRIVATE since the 5 Nov move to the mdmlingbakery org, so every idle minute
+      # bills the org's free Actions allowance (shared with the automations repo). While private, tracker.js
+      # refuses any wait over 5 min (IDLE_BUDGET_MIN) instead of billing ~2.5h per cron. Public again = no limit.
+      # Fails SAFE: if visibility cannot be read, treat as private.
+      - name: Idle budget (refuse long waits while the repo is private)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRIV=$(gh api "repos/$GITHUB_REPOSITORY" --jq .private 2>/dev/null || echo unknown)
+          echo "repo private: $PRIV"
+          if [ "$PRIV" != "false" ]; then echo "IDLE_BUDGET_MIN=5" >> "$GITHUB_ENV"; echo "::warning::Repo is PRIVATE (or unreadable) — long idles refused; make it public to restore the punctual cloud backup."; fi
       - name: Install screenshot deps (render-shot.py)
         run: |
           python3 -m pip install --quiet pypdfium2 pillow
@@ -165,6 +176,19 @@ jobs:
           # LLV must run even if MLB fails, so don't let -e kill the step early.
           set +e
           rc_total=0
+
+          # MLB CNY 2027 (SEASON=CNY27), added Fri 6 Nov 2026 for the handover. Runs FIRST; first armed day
+          # Mon 23 Nov (R1 closes Wed 25 Nov). Round ends read live from the CNY27 sheet's "27 discount" tab.
+          echo "::group::CNY27 MLB"
+          SEASON=CNY27 BRAND=MLB \
+            META_ACCESS_TOKEN="$MLB_META_ACCESS_TOKEN" \
+            WC_CONSUMER_KEY="$MLB_WC_CONSUMER_KEY" \
+            WC_CONSUMER_SECRET="$MLB_WC_CONSUMER_SECRET" \
+            node tracker.js $ARGS
+          rc_cny=$?
+          echo "::endgroup::"
+          echo "CNY27 MLB exit=$rc_cny"
+          [ $rc_cny -ne 0 ] && rc_total=1
 
           # MLB Deepavali 2026 (SEASON=DEEP26), added Wed 30 Sep 2026. Runs first: the MAF26 runs
           # below are inert since that season ended. Same MLB credentials.

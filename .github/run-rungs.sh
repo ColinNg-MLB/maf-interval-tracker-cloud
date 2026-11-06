@@ -78,7 +78,10 @@ for slot in $SLOTS; do
   # SEASON/BRAND pairs, in send order. DEEP26/MLB (MLB Deepavali 2026, added Wed 30 Sep 2026)
   # runs FIRST: the two MAF26 entries are inert since that season ended (no armed days left),
   # so they exit in a second and cannot delay it. A season's credentials are its brand's.
-  for pair in DEEP26/MLB MAF26/MLB MAF26/LLV; do
+  # CNY27/MLB (MLB CNY 2027, added Fri 6 Nov 2026) runs FIRST; DEEP26 + MAF26 are inert (seasons over).
+  # ⚠ This relay idles in shell sleeps that IDLE_BUDGET_MIN cannot see — keep slot-relay.yml DISABLED while the
+  #   repo is PRIVATE (every idle minute bills the org's Actions allowance, shared with the automations repo).
+  for pair in CNY27/MLB DEEP26/MLB MAF26/MLB MAF26/LLV; do
     season="${pair%/*}"; brand="${pair#*/}"
     key_meta="${brand}_META_ACCESS_TOKEN"
     key_ck="${brand}_WC_CONSUMER_KEY"

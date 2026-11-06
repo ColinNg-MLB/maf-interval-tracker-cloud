@@ -73,6 +73,17 @@ const SEASONS = {
       runDatesKey: 'MLB_DEEP26',
     },
   },
+  // CNY27 = MLB CNY 2027 (Fri 6 Nov 2026, handover build — Colin leaves ~20 Nov, so this runs CLOUD-ONLY).
+  // Round ends LIVE from the CNY27 sheet's "27 discount" tab; the season crosses New Year, so Jan-Jun ends
+  // roll to 2027 (rollYear). Armed: the close + 2 days before (Colin's rule). First armed day Mon 23 Nov.
+  CNY27: {
+    MLB: {
+      sheetId: '1dsuXJ2D41eHxiXWUzUFpFOI-hB9psIKwhXPki5myYHQ', tab: 'moving average', gid: 198369866,
+      act: '521387868326577', store: 'https://mdmlingbakery.com',
+      campaignMatch: 'CNY27', closesFrom: { tab: '27 discount', year: 2026, rollYear: true }, armDaysBeforeClose: 2,
+      runDatesKey: 'MLB_CNY27',
+    },
+  },
 };
 const BRAND = (process.env.BRAND || '').toUpperCase();
 const CFG = (SEASONS[SEASON] || {})[BRAND];
@@ -416,7 +427,7 @@ const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0
 // so the caller's "unreadable" branch runs — never a silently shorter list of closes.
 const MON3 = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 async function sheetArmDates() {
-  const { tab, year } = CFG.closesFrom;
+  const { tab, year, rollYear } = CFG.closesFrom;
   const token = await googleToken();
   const { status, json, text } = await jget(`https://sheets.googleapis.com/v4/spreadsheets/${CFG.sheetId}/values/${encodeURIComponent(`'${tab}'!A1:D30`)}`, { headers: { Authorization: 'Bearer ' + token } });
   if (status !== 200) throw new Error(`"${tab}" tab read ${status}: ${String(text).slice(0, 150)}`);
@@ -430,7 +441,8 @@ async function sheetArmDates() {
     const round = String(row[ri] || '').trim().toUpperCase(); if (!/^R\d+$/.test(round)) continue;
     const m = String(row[ei] || '').trim().match(/^(\d{1,2})\s+([A-Za-z]{3})/);
     if (!m || MON3[m[2].toLowerCase()] === undefined) throw new Error(`"${tab}" ${round}: cannot read end date "${row[ei]}"`);
-    const close = new Date(Date.UTC(year, MON3[m[2].toLowerCase()], +m[1])).toISOString().slice(0, 10);
+    const mo = MON3[m[2].toLowerCase()];
+    const close = new Date(Date.UTC(rollYear && mo <= 5 ? year + 1 : year, mo, +m[1])).toISOString().slice(0, 10);
     for (let d = back; d >= 0; d--) {
       const dt = new Date(close + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - d);
       out.push({ date: dt.toISOString().slice(0, 10), round, close });
@@ -628,6 +640,19 @@ const main = async () => {
     const [th, tm] = [Math.floor(Number(target) / 100), Number(target) % 100];
     const wakeMin = th * 60 + tm + 1; // fire at slot + 1 minute
     const capMin = Number(process.env.WAIT_CAP_MIN || 210); // never idle > 3.5h
+    // IDLE_BUDGET_MIN (Fri 6 Nov 2026): the cloud copy's long idle was FREE only because its repo was PUBLIC. On
+    // 5 Nov it moved to the mdmlingbakery org and went PRIVATE, where every idle minute bills the org's 2,000
+    // free Actions minutes/month — shared with the automations repo, so a few armed days would stop EVERY org
+    // workflow. The workflow sets this when the repo is private: a wait longer than the budget is refused
+    // (clean exit 0, loud log line) instead of being billed. Unset (laptop, public repo) = unchanged.
+    const idleBudget = process.env.IDLE_BUDGET_MIN ? Number(process.env.IDLE_BUDGET_MIN) : null;
+    {
+      const c0 = nowSGT(); const w0 = wakeMin - (c0.getUTCHours() * 60 + c0.getUTCMinutes());
+      if (idleBudget !== null && w0 > idleBudget) {
+        console.log(`  REFUSING TO IDLE: target ${target} is ${w0} min away and this repo is PRIVATE (idle budget ${idleBudget} min) — idling would bill the org's Actions minutes. Rung left to a later run. Make the repo public again to restore the cloud backup.`);
+        return;
+      }
+    }
     while (true) {
       const c = nowSGT(); const curMin = c.getUTCHours() * 60 + c.getUTCMinutes();
       let waitMin = wakeMin - curMin;
