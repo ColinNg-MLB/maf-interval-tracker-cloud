@@ -81,7 +81,8 @@ for slot in $SLOTS; do
   # CNY27/MLB (MLB CNY 2027, added Fri 6 Nov 2026) runs FIRST; DEEP26 + MAF26 are inert (seasons over).
   # ⚠ This relay idles in shell sleeps that IDLE_BUDGET_MIN cannot see — keep slot-relay.yml DISABLED while the
   #   repo is PRIVATE (every idle minute bills the org's Actions allowance, shared with the automations repo).
-  for pair in CNY27/MLB DEEP26/MLB MAF26/MLB MAF26/LLV; do
+  # CNY27/LLV (LLV Xmas26/CNY27, added Fri 6 Nov 2026) right after CNY27/MLB: MLB's messages, then LLV's.
+  for pair in CNY27/MLB CNY27/LLV DEEP26/MLB MAF26/MLB MAF26/LLV; do
     season="${pair%/*}"; brand="${pair#*/}"
     key_meta="${brand}_META_ACCESS_TOKEN"
     key_ck="${brand}_WC_CONSUMER_KEY"

@@ -191,6 +191,19 @@ jobs:
           echo "CNY27 MLB exit=$rc_cny"
           [ $rc_cny -ne 0 ] && rc_total=1
 
+          # LLV Xmas26/CNY27 (SEASON=CNY27 BRAND=LLV), added Fri 6 Nov 2026. Right after CNY27 MLB so the group
+          # gets MLB's messages then LLV's. First armed day Sun 15 Nov (Bakes R1 + Cookies R1 close Tue 17 Nov).
+          echo "::group::CNY27 LLV"
+          SEASON=CNY27 BRAND=LLV \
+            META_ACCESS_TOKEN="$LLV_META_ACCESS_TOKEN" \
+            WC_CONSUMER_KEY="$LLV_WC_CONSUMER_KEY" \
+            WC_CONSUMER_SECRET="$LLV_WC_CONSUMER_SECRET" \
+            node tracker.js $ARGS
+          rc_cnyllv=$?
+          echo "::endgroup::"
+          echo "CNY27 LLV exit=$rc_cnyllv"
+          [ $rc_cnyllv -ne 0 ] && rc_total=1
+
           # MLB Deepavali 2026 (SEASON=DEEP26), added Wed 30 Sep 2026. Runs first: the MAF26 runs
           # below are inert since that season ended. Same MLB credentials.
           echo "::group::DEEP26 MLB"

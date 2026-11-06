@@ -83,6 +83,15 @@ const SEASONS = {
       campaignMatch: 'CNY27', closesFrom: { tab: '27 discount', year: 2026, rollYear: true }, armDaysBeforeClose: 2,
       runDatesKey: 'MLB_CNY27',
     },
+    // LLV Xmas26/CNY27 (Fri 6 Nov 2026): BOTH ladders count as closes (Colin), from the LLV sheet's "27 discount"
+    // tab (Bakes R1-R3 + Cookies R1-R7; the two R1s share Tue 17 Nov). Campaigns XMAS26-* and CNY27-*.
+    // First armed day Sun 15 Nov 2026. CLOUD-ONLY, same as MLB.
+    LLV: {
+      sheetId: '1sspRk8Kv2daR8-v7ByHnJod95OZMZO-BjXGRYwFIn7c', tab: 'daily moving average', gid: 163728980,
+      act: '3055222664753411', store: 'https://www.lalevain.com',
+      campaignMatch: 'XMAS26|CNY27', closesFrom: { tab: '27 discount', year: 2026, rollYear: true }, armDaysBeforeClose: 2,
+      runDatesKey: 'LLV_CNY27',
+    },
   },
 };
 const BRAND = (process.env.BRAND || '').toUpperCase();
@@ -163,15 +172,23 @@ async function jget(url, opts) {
 }
 
 // ---- Meta: MAF26 spend today (account TZ = SGT) ----
+// CAMPAIGN_MATCH may hold several names separated by "|" (LLV Xmas26/CNY27 = "XMAS26|CNY27", added 6 Nov 2026):
+// Meta's CONTAIN filter takes ONE value, so each token is queried separately and campaigns de-duplicated by name.
+const MATCH_TOKENS = CAMPAIGN_MATCH.split('|').map((s) => s.trim()).filter(Boolean);
+const matchesSeason = (name) => MATCH_TOKENS.some((t) => String(name || '').includes(t));
 async function metaSpendToday() {
   const iso = todaySGT();
-  const filtering = encodeURIComponent(JSON.stringify([{ field: 'campaign.name', operator: 'CONTAIN', value: CAMPAIGN_MATCH }]));
   const tr = encodeURIComponent(JSON.stringify({ since: iso, until: iso }));
-  const url = `https://graph.facebook.com/${GRAPH_VER}/act_${ACT}/insights?level=campaign&fields=campaign_name,spend&time_range=${tr}&filtering=${filtering}&limit=200&access_token=${META_TOKEN}`;
-  const { json } = await jget(url);
-  if (!json || json.error) throw new Error('Meta insights error: ' + JSON.stringify(json && json.error));
+  const seen = new Map();
+  for (const tok of MATCH_TOKENS) {
+    const filtering = encodeURIComponent(JSON.stringify([{ field: 'campaign.name', operator: 'CONTAIN', value: tok }]));
+    const url = `https://graph.facebook.com/${GRAPH_VER}/act_${ACT}/insights?level=campaign&fields=campaign_name,spend&time_range=${tr}&filtering=${filtering}&limit=200&access_token=${META_TOKEN}`;
+    const { json } = await jget(url);
+    if (!json || json.error) throw new Error('Meta insights error: ' + JSON.stringify(json && json.error));
+    for (const r of json.data || []) seen.set(r.campaign_name, parseFloat(r.spend || 0));
+  }
   let spend = 0; const names = [];
-  for (const r of json.data || []) { spend += parseFloat(r.spend || 0); names.push(r.campaign_name); }
+  for (const [n, s] of seen) { spend += s; names.push(n); }
   return { spend, names };
 }
 
@@ -183,7 +200,7 @@ async function metaBudgets() {
   if (!json || json.error) throw new Error('Meta campaigns error: ' + JSON.stringify(json && json.error));
   let total = 0, purchase = 0; const lines = [];
   for (const c of json.data || []) {
-    if (!(c.name || '').includes(CAMPAIGN_MATCH)) continue;
+    if (!matchesSeason(c.name)) continue;
     if (c.effective_status !== 'ACTIVE') continue;
     let b = Number(c.daily_budget || 0) / 100;
     if (!b) for (const a of (c.adsets && c.adsets.data) || []) {
