@@ -13,6 +13,13 @@ Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 > PUBLIC again (needs Derek). Tracker row: "mdmlingbakery GitHub: MLB owners + make close-night tracker public again".
 > The Tue 10 Nov teardown below is superseded by that decision.
 
+> **⛔ HOME MOVED AGAIN — Fri 6 Nov 2026: `ColinNg-MLB/maf-interval-tracker-cloud` is the LIVE copy** (Derek: run on
+> Colin's GitHub; transfer to Kien or Magnified the week of 9 Nov). Created by Claude as PRIVATE (the safety check
+> blocks Claude creating public repos) with its 11 keys; **Colin must switch it to PUBLIC** (Settings > Danger Zone >
+> Change visibility) so the idle waits are free. The org copy `mdmlingbakery/maf-interval-tracker-cloud` is to be
+> switched OFF at cutover (`shared/github-handover/cutover.js --repo=maf-interval-tracker-cloud`). Re-enable
+> `slot-relay.yml` only once public.
+
 > **CNY27 WIRED (Fri 6 Nov 2026).** `interval-tracker.yml` (renamed "CNY27 Close-Night Tracker (cloud backup)") and
 > `run-rungs.sh` run `SEASON=CNY27 BRAND=MLB` FIRST — the CNY27 sheet's `moving average` tab (gid 198369866), round
 > ends live from its `27 discount` tab (Jan/Feb roll to 2027), first armed day Mon 23 Nov. The laptop task is NOT part
