@@ -5,10 +5,8 @@ name: CNY27 Close-Night Tracker (cloud backup)
 # is primary; this fills any slot the laptop misses.
 #
 # COVERS ALL 8 SLOTS since 9 Aug 2026 (was evenings-only 2000/2130/2300). The daytime rungs
-# were added because the laptop being ASLEEP kills them silently: Colin's machine slept
-# Sat 8 Aug 22:11 -> Sun 9 Aug 15:26 (17h 15m), so LLV's 1030/1145/1400 never ran on an
-# armed day (R3 close 11 Aug) and Windows then ran the missed job at 15:32, which landed in
-# the 1600 row (28 min, inside the +/-35 tolerance) and alerted "2pm to 4pm" before 4pm.
+# were added because a laptop that is ASLEEP loses its triggers silently, and Windows can
+# then run the missed job late enough to land in the wrong row.
 # The laptop stays PRIMARY for punctuality; --skip-if-filled makes this a silent no-op
 # whenever the laptop got there first.
 # Public repo = unlimited free Actions minutes — REQUIRED because each run IDLES ~2.5h
@@ -27,7 +25,7 @@ name: CNY27 Close-Night Tracker (cloud backup)
 #
 # WHY NOT A MATRIX (it was one, 24 Jul - 3 Aug 2026): two parallel jobs hitting the same slot
 # minute interleaved their Telegram messages — MLB text, LLV text, MLB photos, LLV photos —
-# because the screenshots take ~10s longer to build than the text. Colin wants MLB text +
+# because the screenshots take ~10s longer to build than the text. Required order: MLB text +
 # MLB screenshots, then LLV text + LLV screenshots. Sequential in one job makes it
 # deterministic. NOTE: `max-parallel: 1` on the matrix would NOT have worked — LLV's job
 # would only start after MLB's finished, and MLB's job includes the ~2.5h idle wait, so
@@ -120,8 +118,8 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
-      # Fri 6 Nov 2026: this repo is PRIVATE since the 5 Nov move to the mdmlingbakery org, so every idle minute
-      # bills the org's free Actions allowance (shared with the automations repo). While private, tracker.js
+      # If this repo is PRIVATE, every idle minute bills the account's free Actions allowance (shared with every
+      # other repo on the account). While private, tracker.js
       # refuses any wait over 5 min (IDLE_BUDGET_MIN) instead of billing ~2.5h per cron. Public again = no limit.
       # Fails SAFE: if visibility cannot be read, treat as private.
       - name: Idle budget (refuse long waits while the repo is private)
@@ -178,7 +176,7 @@ jobs:
           set +e
           rc_total=0
 
-          # MLB CNY 2027 (SEASON=CNY27), added Fri 6 Nov 2026 for the handover. Runs FIRST; first armed day
+          # MLB CNY 2027 (SEASON=CNY27), added Fri 6 Nov 2026. Runs FIRST; first armed day
           # Mon 23 Nov (R1 closes Wed 25 Nov). Round ends read live from the CNY27 sheet's "27 discount" tab.
           echo "::group::CNY27 MLB"
           SEASON=CNY27 BRAND=MLB \

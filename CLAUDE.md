@@ -4,29 +4,20 @@ Backup runner for `shared/maf-interval-tracker/`. The **laptop** (Windows Task S
 is primary and punctual; this covers slots the laptop misses.
 Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 
-> **⛔ MOVED + NOW PRIVATE (Thu 5 Nov 2026).** Transferred to the company org: **`mdmlingbakery/maf-interval-tracker-cloud`**
-> (old address redirects). Its only org admin is **Derek Chua of Magnified, the website agency**; Colin has WRITE only, so
-> he cannot edit secrets or visibility. Within ~1h of the move it was switched to **PRIVATE** (not by us). Private = its
-> runs bill the org's 2,000 free Actions min/month, and **slot-relay runs measured 316–741 min EACH (4–5 Nov)** — enough
-> to exhaust the cap in days and block every org workflow, `automations` included. Colin's call 5 Nov: leave the jobs ON
-> and the keys IN, because it is to be **reactivated for MLB CNY27 (R1 closes Wed 25 Nov)**. Before then it must be made
-> PUBLIC again (needs Derek). Tracker row: "mdmlingbakery GitHub: MLB owners + make close-night tracker public again".
-> The Tue 10 Nov teardown below is superseded by that decision.
-
-> **⛔ HOME MOVED AGAIN — Fri 6 Nov 2026: `ColinNg-MLB/maf-interval-tracker-cloud` is the LIVE copy** (Derek: run on
-> Colin's GitHub; transfer to Kien or Magnified the week of 9 Nov). Created by Claude as PRIVATE (the safety check
-> blocks Claude creating public repos) with its 11 keys; **Colin must switch it to PUBLIC** (Settings > Danger Zone >
-> Change visibility) so the idle waits are free. The org copy `mdmlingbakery/maf-interval-tracker-cloud` is to be
-> switched OFF at cutover (`shared/github-handover/cutover.js --repo=maf-interval-tracker-cloud`). Re-enable
-> `slot-relay.yml` only once public.
+> **⛔ CURRENT HOME (since Fri 6 Nov 2026): `ColinNg-MLB/maf-interval-tracker-cloud`, PUBLIC, both workflows active
+> (checked Tue 10 Nov 2026).** The `ColinNg-MLB` account is to be transferred before Thu 26 Nov 2026. An earlier org copy,
+> `mdmlingbakery/maf-interval-tracker-cloud` (org admin: Magnified, the website agency), is not the live copy and is
+> switched off at cutover.
+> **The repo MUST stay PUBLIC.** On a private repo the idle waits bill the account's 2,000 free Actions min/month, and
+> slot-relay runs measured 316–741 min EACH (4–5 Nov 2026) — enough to block every workflow on the account in days.
+> If it is ever made private: an "Idle budget" step sets IDLE_BUDGET_MIN=5 and tracker.js refuses the ~2.5h waits, so
+> the punctual rungs DO NOT FILL; keep `slot-relay.yml` DISABLED while private (its shell sleeps are not budgeted).
+> To make it public: Settings > Danger Zone > Change visibility.
 
 > **CNY27 WIRED (Fri 6 Nov 2026).** `interval-tracker.yml` (renamed "CNY27 Close-Night Tracker (cloud backup)") and
 > `run-rungs.sh` run `SEASON=CNY27 BRAND=MLB` FIRST — the CNY27 sheet's `moving average` tab (gid 198369866), round
 > ends live from its `27 discount` tab (Jan/Feb roll to 2027), first armed day Mon 23 Nov. The laptop task is NOT part
-> of CNY27 (Colin leaves ~20 Nov) — this repo is the ONLY runner. **While the repo is PRIVATE an "Idle budget" step
-> sets IDLE_BUDGET_MIN=5 and tracker.js refuses the ~2.5h waits** (they would bill the org's Actions minutes, shared
-> with `automations`), so the punctual rungs DO NOT FILL until Derek (Magnified, org admin) makes the repo public
-> again. `slot-relay.yml` stays DISABLED while private — it idles in shell sleeps the budget cannot see.
+> of CNY27 — this repo is the ONLY runner.
 
 > **(history) Wed 30 Sep 2026: both workflows RE-ENABLED for MLB Deepavali 2026.** Both
 > `interval-tracker.yml` and `.github/run-rungs.sh` (used by `slot-relay.yml`) now run
@@ -40,11 +31,9 @@ Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 
 **Covers ALL 8 slots since 9 Aug 2026** (commit b24c87a). It was evenings-only
 (2000/2130/2300) on the assumption that the laptop was awake through the working day —
-wrong. A laptop that is merely ASLEEP loses its triggers exactly like one that is off:
-Colin's slept Sat 8 Aug 22:11 → Sun 9 Aug 15:26 (17h 15m), so LLV's 1030/1145/1400 rungs
-never ran on an armed day, and Windows `StartWhenAvailable` then ran the missed job at
-15:32 — 28 min from the 1600 rung, inside the ±35 tolerance — so it filled the **4pm** row
-and alerted "2pm to 4pm" at half past three. Cron→slot map:
+wrong. A laptop that is merely ASLEEP loses its triggers exactly like one that is off, and
+Windows `StartWhenAvailable` can then run a missed job late enough to fill the wrong row.
+Cron→slot map:
 
 | Cron (UTC) | Starts (SGT) | Target slot | Idle |
 |---|---|---|---|
@@ -71,7 +60,7 @@ so only a real scheduled fire exercises them; verify the mapping statically inst
   CI. Pair it with `apply=false`.
 - **A `target` more than `WAIT_CAP_MIN` (210 min) from now ABORTS BY DESIGN** and the run goes
   **red**: `FATAL: target 2300 is 703 min away (> 210 cap) — cron fired far too early`. That
-  guard exists so a wildly-early cron never idles for hours. It also means a careless test
+  guard exists so a wildly-early cron never idles for hours. It also means a mis-targeted test
   dispatch leaves a failure in the run history that looks like a real outage.
   **Run `31454984084` (11 Aug 2026, 03:18 UTC, red) is exactly that — a mis-targeted manual
   test, not a fault.** **So is `42157824498` (ColinNg-MLB copy, Fri 6 Nov 2026)** — the deliberate post-move check
@@ -106,7 +95,7 @@ sanctioned minute-cap workaround (see main CLAUDE.md "GitHub Actions minute budg
 `tracker.js` + `render-shot.py` + `round-schedule.json` + `run-dates.json` are copied from
 `shared/maf-interval-tracker/`. **Any edit to the engine must be applied to BOTH**
 (laptop copy + this copy, then push). Two copies is an accepted trade-off for a seasonal
-tool (Colin, 21 Jul 2026). `render-shot.py` (since 28 Jul 2026) renders the two Telegram
+tool. `render-shot.py` (since 28 Jul 2026) renders the two Telegram
 screenshot attachments (ladder table + decision block) from the Sheets range-PDF export;
 the workflow pip-installs `pypdfium2 pillow` for it.
 
@@ -144,8 +133,7 @@ the workflow pip-installs `pypdfium2 pillow` for it.
   ~1-2 min after the slot; console shows the sleep countdown.
   **Pick a target LESS THAN `WAIT_CAP_MIN` (210 min) away or the run fails by design** —
   `FATAL: target X is N min away (> 210 cap)` is the anti-runaway guard doing its job, not a
-  bug (3 Aug 2026: dispatched `target=2000` at 11:03 SGT, 538 min out, and read the red X as
-  a regression for a moment). The gate/auth steps still run BEFORE the abort, so a
+  bug. The gate/auth steps still run BEFORE the abort, so a
   deliberately-capped dispatch is a valid cheap smoke test of everything up to the sleep —
   just say that is what it proved, and don't claim the fill path was exercised.
 
@@ -156,8 +144,8 @@ LLV (added 24 Jul 2026 from `llv/.env`): `LLV_META_ACCESS_TOKEN`,
 Shared: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
 (digitalmarketing@ trio), plus `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (set 28 Jul 2026
 — the "Last Day Tracker" bot, `@last_day_tracker_bot`, one bot for both brands; local copy
-of the creds in `~/.telegram.env`; chat id = the "Last Day Tracker" GROUP -5434698446 with
-Colin + Kien + Shannon, switched from Colin's DM same day). If the Telegram secrets are ever missing the
+of the creds in `~/.telegram.env`; chat id = the "Last Day Tracker" GROUP -5434698446). Group members
+are managed in Telegram, not here. If the Telegram secrets are ever missing the
 cloud still fills the sheet, it just sends no alert (graceful skip).
 
 ## Teardown (end of MAF26 season)
@@ -195,7 +183,7 @@ changed at that boundary. **Do not go looking for a cause in this repo — there
 20–29 Aug contained no armed round-close days, so the degradation was invisible until it hit
 Sun 30 Aug (runs dropped) and Mon 31 Aug: every evening cron landed **after SGT midnight**,
 its target rolled to the next day, and `WAIT_CAP_MIN` correctly aborted it. Both brands'
-ladders stopped at 1745 and Colin's phone went quiet after 17:45 on an armed night.
+ladders stopped at 1745 and no alerts were sent after 17:45 on an armed night.
 
 ### Rules
 
@@ -223,7 +211,7 @@ two were:
 | 33484655044 | `schedule` | 15:57 SGT | 16:01–20:01 | 20:01–23:01 |
 
 Both filled and both sent Telegram for **both brands** at rungs 1745, 2000, 2130 and 2300.
-Colin got two identical messages per rung **from 17:46**, not from 20:00 as first reported.
+Each rung sent two identical messages **from 17:46**.
 
 **Why `--skip-if-filled` cannot catch this:** it reads the row, *then* writes. Two runs on
 the same rung in the same second both read "not filled" and both alert. The paired sends
@@ -242,9 +230,9 @@ silent no-op. Same shape as the sibling's sweeper crons firing *past* their slot
 - **When both runs are already past a rung** (heavy GitHub lag), the standoff is measured
   from *now* instead of from the slot, or two late runs would collide all over again.
 - **⚠ IT FAILS OPEN AND MUST STAY THAT WAY.** No token, no network, bad JSON, an unknown run
-  state — all yield rank 0, i.e. *send*. A duplicate alert is an annoyance Colin reads past;
+  state — all yield rank 0, i.e. *send*. A duplicate alert is only an annoyance;
   a silent round-close night is the failure this repo keeps suffering (10 Aug 2026 lost day,
-  31 Aug 2026 quiet phone). **Ranking is an optimisation on top of delivery, never a gate in
+  31 Aug 2026 night with no alerts). **Ranking is an optimisation on top of delivery, never a gate in
   front of it.** Do not "harden" it into a lock.
 - Needs `permissions: actions: read` + `GITHUB_TOKEN: ${{ github.token }}` on each rung step.
   Remove either and it degrades to the old duplicate behaviour — not to silence.

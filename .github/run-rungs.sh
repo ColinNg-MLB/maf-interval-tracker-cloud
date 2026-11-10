@@ -6,7 +6,7 @@
 #
 # ORDER MATTERS: MLB text + MLB screenshots, then LLV text + LLV screenshots. Two
 # parallel processes interleave their Telegram messages because the screenshots take
-# ~10s longer to build than the text — Colin rejected exactly that on 3 Aug 2026.
+# ~10s longer to build than the text, which makes the alerts hard to read.
 #
 # --skip-if-filled on every call: if the laptop or the sibling workflow already wrote
 # that rung today, this exits silently.
@@ -14,7 +14,7 @@
 # THAT GUARD IS NOT ENOUGH ON ITS OWN — 1 Sep 2026. It reads the row and then writes,
 # so two relay runs arriving at the same rung in the same second both read "not filled"
 # and both alert. Two runs (a 09:52 dispatch + a 15:57 schedule) walked the same ladder
-# that day and Colin got two identical Telegram messages per rung from 17:46. Separation
+# that day and each rung sent two identical Telegram messages from 17:46. Separation
 # in TIME is what makes the guard work — which is why every rung below first asks
 # relay-rank.sh whether an older relay run owns this ladder, and a non-owner deliberately
 # arrives RELAY_LAG_SEC late so the owner's fill is already on the sheet. Same safety

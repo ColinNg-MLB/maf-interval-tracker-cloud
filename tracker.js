@@ -1,20 +1,20 @@
 /**
  * MAF26 Round-Close Interval Tracker  (SHARED engine, MLB + LLV)
  * ------------------------------------------------------------------------
- * On the last 3 days of a promo round (Colin's rule since 24 Jul 2026: 2 days
+ * On the last 3 days of a promo round (rule since 24 Jul 2026: 2 days
  * before, 1 day before, last day), fills the brand's "moving average" tab
  * at the interval times listed in column A (1030/1145/1400/1600/1745/2000/2130/2300):
  *   col I = TOTAL Meta MAF26 spend so far today (campaigns with "MAF26" in the name)
  *   col J = TOTAL WooCommerce sales so far today — refund-netted `wc-analytics` total_sales,
- *           i.e. the SAME number Colin's WooCommerce Analytics dashboard shows (a raw order-sum
- *           read $960 vs his $708 on day one; never "simplify" it back to a gross sum). Falls back
+ *           i.e. the SAME number the WooCommerce Analytics dashboard shows (a raw order-sum
+ *           read $960 vs the dashboard's $708 on day one; never "simplify" it back to a gross sum). Falls back
  *           to a raw sum ONLY if the analytics endpoint is unavailable, and says so in the log.
  *   col K = TOTAL paid-order count so far today (analytics orders_count)
  *   B17   = total daily budget of ALL active MAF26 campaigns (live from Meta)
  *   B18   = daily budget of the purchase-objective MAF26 campaign(s)
  * The sheet's own formulas (cols B-H, B19-B30) do all the decision math — this
  * script NEVER writes those cells. After writing, it reads the sheet back and
- * sends Colin a Telegram message ("last day tracker" bot): Overall totals (the slot
+ * sends a Telegram message ("last day tracker" bot): Overall totals (the slot
  * row's I:M cells) + the latest interval (B:F) + the decision block as text (B25
  * "new purchase amount" highlighted), followed by TWO screenshots — the ladder
  * table (A1:M<last time row>) and the decision block (label-anchored A..:B..+13) —
@@ -56,9 +56,8 @@ const BRANDS = {
   LLV: { sheetId: '1Q5meBGm7jbw4abgzixEJBy9VvdBY7CnfOzYWqyTqquo', tab: 'daily moving average', gid: 163728980, act: '3055222664753411', store: 'https://www.lalevain.com' },
 };
 // ---- SEASON (default MAF26 = unchanged) ----
-// DEEP26 = MLB Deepavali 2026 (Colin, Wed 30 Sep 2026: "close night round tracker, first one will
-// kick in on 6 oct"; asked the same day: last 3 days of each round like MAF26, laptop + cloud, same
-// Telegram group). Its round ends are read LIVE from the Deepavali sheet's "discount" tab, NOT from
+// DEEP26 = MLB Deepavali 2026 (added Wed 30 Sep 2026; first armed day Tue 6 Oct): last 3 days of each
+// round like MAF26, laptop + cloud, same Telegram group. Its round ends are read LIVE from the Deepavali sheet's "discount" tab, NOT from
 // round-schedule.json: that file keys closes by BRAND, and campaign-expiry-watch, roundclose-outage-
 // watch and closeday-belts all read "MLB" out of it as MAF26 dates — Deepavali closes filed there
 // would be treated as mid-autumn closes by three other robots.
@@ -73,9 +72,9 @@ const SEASONS = {
       runDatesKey: 'MLB_DEEP26',
     },
   },
-  // CNY27 = MLB CNY 2027 (Fri 6 Nov 2026, handover build — Colin leaves ~20 Nov, so this runs CLOUD-ONLY).
+  // CNY27 = MLB CNY 2027 (Fri 6 Nov 2026; runs CLOUD-ONLY, no laptop task).
   // Round ends LIVE from the CNY27 sheet's "27 discount" tab; the season crosses New Year, so Jan-Jun ends
-  // roll to 2027 (rollYear). Armed: the close + 2 days before (Colin's rule). First armed day Mon 23 Nov.
+  // roll to 2027 (rollYear). Armed: the close + 2 days before. First armed day Mon 23 Nov.
   CNY27: {
     MLB: {
       sheetId: '1dsuXJ2D41eHxiXWUzUFpFOI-hB9psIKwhXPki5myYHQ', tab: 'moving average', gid: 198369866,
@@ -83,7 +82,7 @@ const SEASONS = {
       campaignMatch: 'CNY27', closesFrom: { tab: '27 discount', year: 2026, rollYear: true }, armDaysBeforeClose: 2,
       runDatesKey: 'MLB_CNY27',
     },
-    // LLV Xmas26/CNY27 (Fri 6 Nov 2026): BOTH ladders count as closes (Colin), from the LLV sheet's "27 discount"
+    // LLV Xmas26/CNY27 (Fri 6 Nov 2026): BOTH ladders count as closes, from the LLV sheet's "27 discount"
     // tab (Bakes R1-R3 + Cookies R1-R7; the two R1s share Tue 17 Nov). Campaigns XMAS26-* and CNY27-*.
     // First armed day Sun 15 Nov 2026. CLOUD-ONLY, same as MLB.
     LLV: {
@@ -175,7 +174,7 @@ async function jget(url, opts) {
 // CAMPAIGN_MATCH may hold several names separated by "|" (LLV Xmas26/CNY27 = "XMAS26|CNY27", added 6 Nov 2026):
 // Meta's CONTAIN filter takes ONE value, so each token is queried separately and campaigns de-duplicated by name.
 const MATCH_TOKENS = CAMPAIGN_MATCH.split('|').map((s) => s.trim()).filter(Boolean);
-const matchesSeason = (name) => MATCH_TOKENS.some((t) => String(name || '').includes(t));
+const isSeasonCampaign = (name) => MATCH_TOKENS.some((t) => String(name || '').includes(t));
 async function metaSpendToday() {
   const iso = todaySGT();
   const tr = encodeURIComponent(JSON.stringify({ since: iso, until: iso }));
@@ -200,7 +199,7 @@ async function metaBudgets() {
   if (!json || json.error) throw new Error('Meta campaigns error: ' + JSON.stringify(json && json.error));
   let total = 0, purchase = 0; const lines = [];
   for (const c of json.data || []) {
-    if (!matchesSeason(c.name)) continue;
+    if (!isSeasonCampaign(c.name)) continue;
     if (c.effective_status !== 'ACTIVE') continue;
     let b = Number(c.daily_budget || 0) / 100;
     if (!b) for (const a of (c.adsets && c.adsets.data) || []) {
@@ -214,7 +213,7 @@ async function metaBudgets() {
 }
 
 // ---- WooCommerce: sales + orders, SGT midnight -> now ----
-// PRIMARY source = the WC Analytics stats endpoint — the same numbers Colin reads on the
+// PRIMARY source = the WC Analytics stats endpoint — the same numbers shown on the
 // Analytics dashboard. Its "total sales" nets out refunds ISSUED today (even on older
 // orders); a raw order-sum overcounts on refund days (21 Jul 2026: raw $960 vs
 // dashboard $708 — two same-day refunds of −$252 on pre-today orders).
@@ -369,7 +368,7 @@ async function telegramDiscoverChat() {
 async function telegramSend(html) {
   if (!TG_TOKEN) { console.log('   !! Telegram skipped: no TELEGRAM_BOT_TOKEN (put it in ~/.telegram.env)'); return false; }
   if (!TG_CHAT) TG_CHAT = await telegramDiscoverChat();
-  if (!TG_CHAT) { console.log('   !! Telegram skipped: no chat id — Colin must open the bot and press Start once'); return false; }
+  if (!TG_CHAT) { console.log('   !! Telegram skipped: no chat id — the recipient must open the bot and press Start once'); return false; }
   const { status, json, text } = await jget(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: TG_CHAT, text: html, parse_mode: 'HTML', disable_web_page_preview: true }),
@@ -414,18 +413,18 @@ async function rangeShot(range) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const money = (v) => {
   const n = Number(v);
-  // thousands separator required — Colin, 28 Jul 2026 ("14,623.60 so its easier to read")
+  // thousands separator required ("14,623.60")
   if (Number.isFinite(n)) return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\.00$/, '');
   const s = String(v == null || v === '' ? '—' : v);
   return s.startsWith('#') ? '—' : s; // sheet error cells (#DIV/0! etc) read as "—"
 };
 
-// per-row interval formulas, matching Colin's sheet pattern (r = this row, p = row above)
+// per-row interval formulas, matching the sheet's existing pattern (r = this row, p = row above)
 // F = ad cost as % of sales for the interval. An interval with SPEND but ZERO sales has no
 // finite ratio — the old `=SUM(B/C)` returned #DIV/0!, and every downstream filter
 // (B21/B22, G, H) skips non-numbers, so a dead interval became INVISIBLE and B24 kept
 // recommending off the last interval that happened to have sales (27 Jul 2026: +30% at
-// 16:00 off the 11:45 reading, after 4.5h and $110 of spend with $0 back — Colin caught it).
+// 16:00 off the 11:45 reading, after 4.5h and $110 of spend with $0 back).
 // Now: spend + no sales → 9.99 (renders 999%, an obvious flag) so the rule actually sees it.
 // No spend and no sales → "" (a genuinely empty interval isn't a performance signal).
 const fFormula = (r) => `=IF(C${r}>0, B${r}/C${r}, IF(B${r}>0, 9.99, ""))`;
@@ -435,9 +434,8 @@ const gFormula = (r, p) => `=IF(AND(ISNUMBER(F${r}), ISNUMBER(F${p}), F${p}<>0),
 const hFormula = (r) => `=IF(NOT(ISNUMBER(F${r})),"",IF(F${r}<0.1,0.3,IF(F${r}<0.15,0.25,IF(F${r}<0.2,0.2,IF(NOT(ISNUMBER(G${r})),0,IF(G${r}<=0.15,0,IF(G${r}<=0.25,-0.1,IF(G${r}<=0.4,-0.15,-0.2))))))))`;
 
 // Derive armed dates from round-schedule.json: each round's CLOSE plus the N days before
-// it (Colin's "last 3 days of a round" rule). Added 3 Aug 2026 — the old run-dates.json was
-// hand-edited per round and got forgotten, so LLV's whole 2 Aug and both brands' 3 Aug 1030
-// slot silently no-opped two days before a close. Returns [] on any problem; the caller
+// it (the "last 3 days of a round" rule). Added 3 Aug 2026 so arming does not depend on
+// hand-editing run-dates.json each round. Returns [] on any problem; the caller
 // falls back to run-dates.json so a bad schedule file can never block a manually armed day.
 // A season with closesFrom (DEEP26) reads its round ends from its own budget sheet's round table
 // (col "round" = R1.., col "end" = "6 Oct Tue"), live, every run. A row that will not parse THROWS,
@@ -488,16 +486,14 @@ function scheduledArmDates(brand) {
 }
 
 // ---- decision-block integrity check ----
-// The alert's headline instruction ("new purchase amount") is a formula COLIN owns, in
+// The alert's headline instruction ("new purchase amount") is a formula the SHEET OWNER maintains, in
 // cells this script deliberately never writes — we write B17/B18 (live Meta budgets) and
 // the ladder; the sheet does the decision math. So a cleared or broken formula there does
 // not throw and does not show up as an error: the cell just goes empty, the alert prints
 // a bolded "👉 new purchase amount: —" where the budget instruction should be, and every
 // cell below it (estimated hour spend, amount to spend, estimated spend for full day,
-// projected sales) silently reads 0 or garbage off it. Found 12 Aug 2026 on LLV, where
-// B25 had been deleted by accident and the whole B25:B30 chain was dead. Same family as
-// the 9 Aug stale-data bug: a live, actionable, WRONG budget recommendation reaching a
-// 3-person Telegram group — except that one was bad inputs and this one is a bad formula.
+// projected sales) silently reads 0 or garbage off it. A cleared headline formula does not
+// error, it goes blank, so the alert must check for it.
 //
 // Blank is NOT automatically a fault. "% change of performance vs last interval" and
 // "how much to change" are legitimately empty on the first interval of a day (their own
@@ -515,7 +511,7 @@ function decisionBlockProblems(decision) {
     if (!label && !val) continue;
     // Mark the headline as SEEN before testing its value: an erroring headline is still
     // a present row, and reporting "the row was deleted" on top of "#DIV/0!" would send
-    // Colin looking for the wrong fault.
+    // the reader looking for the wrong fault.
     const isHeadline = label.toLowerCase().includes(HEADLINE_LABEL);
     if (isHeadline) sawHeadline = true;
     if (ERROR_VALUE.test(val)) {
@@ -539,7 +535,7 @@ function decisionBlockProblems(decision) {
 
 // Warning lines for the Telegram message. Goes directly under the title, NOT at the
 // bottom: a broken recommendation must be the first thing in the notification preview,
-// not something Colin scrolls past to reach (discoverability rule, 28 Jul 2026).
+// not something the reader scrolls past to reach.
 function decisionWarningLines(problems, esc) {
   if (!problems.length) return [];
   const out = ['', '<b>⚠️ DECISION BLOCK BROKEN — do not act on the budget instruction below</b>'];
@@ -596,14 +592,14 @@ const main = async () => {
       if (r[0] && iv != null) last = { slot: r[0], spend: iv, sales: cellNum(r[9]) || 0, orders: cellNum(r[10]) || 0 };
     }
     const nn = nowSGT();
-    // same block layout + labels as the scheduled alert (Colin's spec, 28 Jul 2026):
+    // same block layout + labels as the scheduled alert:
     // Overall first, then the since-last-slot block, each with a % line (spend/sales).
     // Values here are LIVE reads (a spot never writes the sheet), so they're formatted
     // in code: plain numbers with thousands commas, no "$".
     const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const pct = (spend, sales) => (sales > 0 ? (spend / sales * 100).toFixed(2) + '%' : (spend > 0 ? '999.00%' : '—'));
     // A spot check never prints the decision block as text, but it DOES send it as a
-    // photo below — so a broken formula would reach Colin here just as silently as in a
+    // photo below — so a broken formula would reach the group here just as silently as in a
     // scheduled alert. Same guard, same placement (right under the title). One extra read.
     const spotProblems = decisionBlockProblems(await sheetGet(`A${anchor}:B${anchor + 13}`));
     if (spotProblems.length) {
@@ -633,7 +629,7 @@ const main = async () => {
     if (!NO_ALERT) {
       const sent = await telegramSend(lines.join('\n'));
       console.log(`-> Telegram ${sent ? 'sent' : 'NOT sent'}`);
-      // same two screenshots as the scheduled fills (Colin, 28 Jul 2026 — the sheet shows
+      // same two screenshots as the scheduled fills (the sheet shows
       // the LAST FILLED slot; a spot check never writes, so the photos can lag the text)
       if (sent) {
         try {
@@ -657,10 +653,9 @@ const main = async () => {
     const [th, tm] = [Math.floor(Number(target) / 100), Number(target) % 100];
     const wakeMin = th * 60 + tm + 1; // fire at slot + 1 minute
     const capMin = Number(process.env.WAIT_CAP_MIN || 210); // never idle > 3.5h
-    // IDLE_BUDGET_MIN (Fri 6 Nov 2026): the cloud copy's long idle was FREE only because its repo was PUBLIC. On
-    // 5 Nov it moved to the mdmlingbakery org and went PRIVATE, where every idle minute bills the org's 2,000
-    // free Actions minutes/month — shared with the automations repo, so a few armed days would stop EVERY org
-    // workflow. The workflow sets this when the repo is private: a wait longer than the budget is refused
+    // IDLE_BUDGET_MIN (Fri 6 Nov 2026): the cloud copy's long idle is FREE only while its repo is PUBLIC. On a
+    // private repo every idle minute bills the account's 2,000 free Actions minutes/month, shared with every
+    // other repo there, so a few armed days could stop ALL its workflows. The workflow sets this when the repo is private: a wait longer than the budget is refused
     // (clean exit 0, loud log line) instead of being billed. Unset (laptop, public repo) = unchanged.
     const idleBudget = process.env.IDLE_BUDGET_MIN ? Number(process.env.IDLE_BUDGET_MIN) : null;
     {
@@ -693,7 +688,7 @@ const main = async () => {
     return;
   }
 
-  // ---- match the interval slot from column A (read fresh every run — Colin edits the ladder) ----
+  // ---- match the interval slot from column A (read fresh every run — the ladder is edited by hand) ----
   const colA = (await sheetGet(`A2:A${anchor - 1}`)).map((r, i) => ({ raw: r[0], row: i + 2 })).filter((x) => x.raw && /^\d{3,4}$/.test(String(x.raw).trim()));
   if (!colA.length) throw new Error(`no interval times found in column A2:A${anchor - 1}`);
   const forced = getArg('slot') || target;
@@ -723,8 +718,8 @@ const main = async () => {
     // Dry runs are unaffected, and `--allow-late` is the deliberate-backfill escape hatch.
     // Exits 0, like --skip-if-filled: a rung too late to fill honestly is a legitimate NO-OP,
     // not a failure. Throwing here would turn every relay run red for the rest of the day
-    // (run-rungs.sh rolls any non-zero rung up into the job's exit), and this repo already has
-    // an open row about benign red emails training Colin to ignore the real ones.
+    // (run-rungs.sh rolls any non-zero rung up into the job's exit), and benign red runs
+    // teach readers to ignore the real ones.
     const lateBy = nowMin - hhmmToMin(slot.raw);
     if (APPLY && lateBy > SLOT_TOLERANCE_MIN && !args.includes('--allow-late')) {
       console.log(`[${BRAND}] slot ${slot.raw} is ${lateBy} min in the past `
@@ -779,8 +774,8 @@ const main = async () => {
   if (needsDayClear) {
     // new day: yesterday's numbers must not mix in — snapshot them to the log, then clear.
     // B:H of the row being filled are also cleared: it is the day's first fill, so there is
-    // no previous interval to measure (Colin confirmed 21 Jul 2026 the first row's B:H
-    // should just stay empty). Since 11 Aug 2026 this also fires when the day's first fill
+    // no previous interval to measure (the first row's B:H
+    // stays empty by design). Since 11 Aug 2026 this also fires when the day's first fill
     // lands on a LATER rung (laptop off all morning) — proven by the STALE stamp, never
     // guessed, because a wrong clear would destroy today's real fills.
     const prev = await sheetGet(`A2:K${anchor - 1}`);
@@ -800,8 +795,8 @@ const main = async () => {
   const prevSlot = [...earlier].reverse().find((x) => hasData(x.row)) || null;
   const skippedSlots = prevSlot ? earlier.filter((x) => x.row > prevSlot.row) : earlier;
 
-  // self-heal this row's formulas: after Colin inserts/re-labels ladder rows, the row he
-  // added has NO B:H/L:M formulas and the row after his insert still references the
+  // self-heal this row's formulas: after ladder rows are inserted/re-labelled by hand, the new
+  // row has NO B:H/L:M formulas and the row after the insert still references the
   // pre-insert row (Sheets keeps cell refs, not "row above me"). Also repoints across
   // skipped (empty) slots. Fix here so the fill always measures the right interval.
   const writes = [];
@@ -836,10 +831,10 @@ const main = async () => {
   const decision = await sheetGet(`A${anchor}:B${anchor + 13}`);
   const rowVals = grid[slot.row - 1] || [];
   const asText = (v) => esc(v == null || v === '' || String(v).startsWith('#') ? '—' : v);
-  // Message layout = Colin's spec (28 Jul 2026): Overall block first (the slot row's
+  // Message layout (spec, 28 Jul 2026): Overall block first (the slot row's
   // cumulative cells I:M), then the latest-interval block (B:F), both incl. the % column.
   // Every line = the cell's FORMATTED value verbatim — the sheet's own number formats
-  // carry the thousands commas ("14,623.60") and rounding Colin wants; no "$", no re-math.
+  // carry the thousands commas ("14,623.60") and rounding required; no "$", no re-math.
   const [iSpend, iSales, iOrders, iPct, iAvg] = [rowVals[8], rowVals[9], rowVals[10], rowVals[11], rowVals[12]];
   const [pSpent, pSales, pOrders, pAvg, pPct] = [rowVals[1], rowVals[2], rowVals[3], rowVals[4], rowVals[5]];
 
@@ -864,7 +859,7 @@ const main = async () => {
   lines.push(`avg value: ${asText(iAvg)}`);
   lines.push('');
   // interval block: the sheet's own formula cells. First slot of the day has no
-  // previous interval — Colin wants no carry-over from yesterday, so it's totals-only.
+  // previous interval — no carry-over from yesterday, so it's totals-only.
   if (prevSlot) {
     const missed = skippedSlots.length ? ` (${skippedSlots.map((x) => slotLabel(x.raw)).join(', ')} slot${skippedSlots.length > 1 ? 's' : ''} missed)` : '';
     lines.push(`<b>${esc(slotLabel(prevSlot.raw))} to ${esc(slotLabel(slot.raw))}</b>${esc(missed)}`);
@@ -895,7 +890,7 @@ const main = async () => {
   // ---- screenshots: the ladder table + the decision block, as photos ----
   // Ranges are derived, not hardcoded: the ladder shot stops at the last time row in
   // column A (junk formula rows below it stay out of frame), and the decision shot
-  // follows the label anchor — both survive Colin's row inserts. A screenshot failure
+  // follows the label anchor — both survive manual row inserts. A screenshot failure
   // must never fail the run: the sheet is already written and the text alert sent.
   if (sent && !NO_ALERT) {
     try {

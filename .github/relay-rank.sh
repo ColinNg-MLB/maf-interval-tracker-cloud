@@ -13,8 +13,8 @@
 #   33460418347  workflow_dispatch  09:52 SGT
 #   33484655044  schedule           15:57 SGT
 # -- both ran eve1 16:01-20:01 and eve2 20:01-23:01, and both sent Telegram for
-# BOTH brands at rungs 1745, 2000, 2130 and 2300. Colin got two identical
-# messages per rung from 17:46 onward.
+# BOTH brands at rungs 1745, 2000, 2130 and 2300, so each rung
+# sent two identical messages from 17:46 onward.
 #
 # --skip-if-filled could not catch it. That guard reads the row, then writes;
 # with two runs on the same rung in the same second, both read "not filled" and
@@ -30,9 +30,9 @@
 #
 # WARNING: THIS FAILS OPEN ON PURPOSE -- DO NOT "HARDEN" IT.
 # Any error, any timeout, any unparseable response, any doubt => rank 0 => send.
-# A duplicate alert is an annoyance Colin can read past. A silent round-close
+# A duplicate alert is only an annoyance. A silent round-close
 # night is the failure this repo keeps getting bitten by: the 10 Aug 2026 lost
-# day (all 8 rungs skipped on a stale guard) and the 31 Aug 2026 quiet phone.
+# day (all 8 rungs skipped on a stale guard) and the 31 Aug 2026 night with no alerts.
 # Ranking is an optimisation on top of delivery, never a gate in front of it.
 # ============================================================================
 

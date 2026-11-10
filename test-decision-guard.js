@@ -5,13 +5,13 @@
  * READ-ONLY. Writes nothing, sends nothing. It `require`s tracker.js, which is safe
  * because tracker.js only runs when invoked directly (`require.main === module`).
  *
- * Why this exists: the guard's whole job is to notice that a formula Colin owns has
+ * Why this exists: the guard's whole job is to notice that a formula the sheet owner maintains has
  * gone missing. A checker that can fail closed must be proven to find a known positive
  * before its silence means anything — and proven NOT to fire on the healthy case, or
  * it becomes a monitor that cries wolf and gets ignored.
  *
- *   node shared/maf-interval-tracker/test-decision-guard.js           # synthetic only
- *   node shared/maf-interval-tracker/test-decision-guard.js --live    # + both live tabs
+ *   node test-decision-guard.js           # synthetic only
+ *   node test-decision-guard.js --live    # + both live tabs
  *
  * The --live pass is the false-positive calibration: both brands' real decision blocks
  * must produce ZERO problems. Run it after any change to the block's layout or formulas.

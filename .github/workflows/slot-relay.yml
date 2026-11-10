@@ -19,7 +19,7 @@ name: CNY27 Close-Night Tracker (slot relay)
 # armed round-close days, so the degradation was invisible until it hit Sun 30 Aug
 # (runs dropped) and Mon 31 Aug (runs created 6-8h late -> every evening cron landed
 # after SGT midnight -> target rolled to tomorrow -> WAIT_CAP_MIN abort -> the sheet
-# stopped at 1745 and Colin's phone went quiet after 17:45).
+# stopped at 1745 and no alerts were sent after 17:45).
 #
 # THE FIX: stop asking GitHub to be punctual. Ask it only to START ONCE, any time
 # in the morning, and let the RUN walk itself down the ladder.
