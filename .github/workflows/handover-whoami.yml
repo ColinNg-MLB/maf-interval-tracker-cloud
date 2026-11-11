@@ -1,0 +1,42 @@
+name: "Handover check: which account does each robot log in as?"
+
+# Manual only. Read-only: prints the ACCOUNT behind each stored robot login (never the key itself).
+# Run it before and after a person who owns a login leaves. ~1 billed minute per run.
+on:
+  workflow_dispatch:
+    inputs:
+      leaving_accounts:
+        description: "Comma-separated Google emails / names that must NOT own any robot login"
+        required: true
+        default: "colin.ng@mdmlingbakery.com"
+
+jobs:
+  whoami:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Which account owns each robot login
+        env:
+          LEAVING_ACCOUNTS: ${{ inputs.leaving_accounts }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          TRACKER_GOOGLE_CLIENT_ID: ${{ secrets.TRACKER_GOOGLE_CLIENT_ID }}
+          TRACKER_GOOGLE_CLIENT_SECRET: ${{ secrets.TRACKER_GOOGLE_CLIENT_SECRET }}
+          TRACKER_GOOGLE_REFRESH_TOKEN: ${{ secrets.TRACKER_GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GA4_OAUTH_CLIENT_ID: ${{ secrets.GA4_OAUTH_CLIENT_ID }}
+          GA4_OAUTH_CLIENT_SECRET: ${{ secrets.GA4_OAUTH_CLIENT_SECRET }}
+          GA4_OAUTH_REFRESH_TOKEN: ${{ secrets.GA4_OAUTH_REFRESH_TOKEN }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          LLV_META_ACCESS_TOKEN: ${{ secrets.LLV_META_ACCESS_TOKEN }}
+        run: |
+          set -o pipefail
+          node shared/handover-check/whoami.js | tee whoami.log
+          grep -q WHOAMI_DONE whoami.log
