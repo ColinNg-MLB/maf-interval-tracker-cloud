@@ -144,7 +144,9 @@ LLV (added 24 Jul 2026 from `llv/.env`): `LLV_META_ACCESS_TOKEN`,
 Shared: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
 (digitalmarketing@ trio), plus `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (set 28 Jul 2026
 — the "Last Day Tracker" bot, `@last_day_tracker_bot`, one bot for both brands; local copy
-of the creds in `~/.telegram.env`; chat id = the "Last Day Tracker" GROUP -5434698446). Group members
+of the creds in `~/.telegram.env`; chat id = the "Last Day Tracker" GROUP; **since Wed 11 Nov 2026 it is -1004388349935** — the old
+-5434698446 died when an ownership transfer to Kien upgraded the group to a supergroup, which always
+issues a NEW chat id; `~/.telegram.env` still holds the old one, and the laptop tracker is retired). Group members
 are managed in Telegram, not here. If the Telegram secrets are ever missing the
 cloud still fills the sheet, it just sends no alert (graceful skip).
 
