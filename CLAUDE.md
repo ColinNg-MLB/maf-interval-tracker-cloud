@@ -2,12 +2,11 @@
 
 Backup runner for `shared/maf-interval-tracker/`. The **laptop** (Windows Task Scheduler)
 is primary and punctual; this covers slots the laptop misses.
-Repo: `ColinNg-MLB/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
+Repo: `mdmlingbakery/maf-interval-tracker-cloud` — **PUBLIC on purpose.**
 
-> **⛔ CURRENT HOME (since Fri 6 Nov 2026): `ColinNg-MLB/maf-interval-tracker-cloud`, PUBLIC, both workflows active
-> (checked Tue 10 Nov 2026).** The `ColinNg-MLB` account is to be transferred before Thu 26 Nov 2026. An earlier org copy,
-> `mdmlingbakery/maf-interval-tracker-cloud` (org admin: Magnified, the website agency), is not the live copy and is
-> switched off at cutover.
+> **⛔ CURRENT HOME (since Thu 12 Nov 2026): `mdmlingbakery/maf-interval-tracker-cloud`, PUBLIC, workflows active.**
+> Org admin: Magnified, the website agency. The old address `ColinNg-MLB/maf-interval-tracker-cloud` redirects here.
+> `maf-interval-tracker-cloud-old` in the same org is a retired copy; nothing runs from it.
 > **The repo MUST stay PUBLIC.** On a private repo the idle waits bill the account's 2,000 free Actions min/month, and
 > slot-relay runs measured 316–741 min EACH (4–5 Nov 2026) — enough to block every workflow on the account in days.
 > If it is ever made private: an "Idle budget" step sets IDLE_BUDGET_MIN=5 and tracker.js refuses the ~2.5h waits, so

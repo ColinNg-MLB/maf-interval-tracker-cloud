@@ -8,7 +8,7 @@ on:
       leaving_accounts:
         description: "Comma-separated Google emails / names that must NOT own any robot login"
         required: true
-        default: "colin.ng@mdmlingbakery.com"
+        default: "name@mdmlingbakery.com"
 
 jobs:
   whoami:
